@@ -1,4 +1,4 @@
-﻿using InfoPanel.Plugins;
+using InfoPanel.Plugins;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,7 +37,7 @@ namespace AudioLevelMeterPlugin
     {
         int Activate(ref Guid iid, uint dwClsCtx, IntPtr pActivationParams, out IntPtr ppInterface);
         int OpenPropertyStore(uint stgmAccess, out IPropertyStore ppProperties);
-        int GetId(out string ppstrId);
+        int GetId(out IntPtr ppstrId);
         int GetState(out uint pdwState);
     }
 
@@ -120,13 +120,13 @@ namespace AudioLevelMeterPlugin
 
         private readonly object _lockObject = new object();
         private IMMDeviceEnumerator? _deviceEnumerator;
-        private IMMDevice? _defaultDevice;
-        private IAudioMeterInformation? _audioMeter;
+        private readonly Dictionary<string, IMMDevice> _audioDevices = new();
+        private readonly Dictionary<string, IAudioMeterInformation> _audioMeters = new();
         private readonly Dictionary<string, float> _decayValues = new();
         private readonly List<PluginContainer> _containers = new();
         private bool _initializationFailed = false;
 
-        public AudioLevelMeter() : base("audio-level-meter", "Audio Level Meter", "Real-time system audio output level monitoring")
+        public AudioLevelMeter() : base("audio-level-meter", "Audio Level Meter", "Real-time system audio output level monitoring for all devices")
         {
         }
 
@@ -138,14 +138,109 @@ namespace AudioLevelMeterPlugin
             {
                 Console.WriteLine("AudioLevelMeter initializing...");
                 
-                // Create basic container structure - actual initialization happens in Update()
-                PluginContainer container = new("default-audio", "Audio Level Meter");
-                container.Entries.Add(new PluginText("device-name", "Device", "Initializing..."));
-                container.Entries.Add(new PluginSensor("audio-level", "Audio Level", 0f, "%"));
-                _containers.Add(container);
+                // Initialize Core Audio API immediately to enumerate all devices
+                InitializeCoreAudioAPI();
+                
+                // Create default container
+                PluginContainer defaultContainer = new("default-audio", "Audio Level Meter");
+                defaultContainer.Entries.Add(new PluginText("device-name", "Device", "Initializing..."));
+                defaultContainer.Entries.Add(new PluginSensor("audio-level", "Audio Level", 0f, "%"));
+                _containers.Add(defaultContainer);
                 _decayValues["default-audio"] = 0f;
                 
-                Console.WriteLine("AudioLevelMeter basic container created - Core Audio initialization will be attempted in updates");
+                // Enumerate all audio devices and create containers for each
+                if (_deviceEnumerator != null)
+                {
+                    try
+                    {
+                        IMMDeviceCollection deviceCollection;
+                        int hr = _deviceEnumerator.EnumAudioEndpoints(DataFlow.Render, 1, out deviceCollection); // 1 = DEVICE_STATE_ACTIVE
+                        if (hr == S_OK)
+                        {
+                            uint deviceCount;
+                            deviceCollection.GetCount(out deviceCount);
+                            Console.WriteLine($"Found {deviceCount} active audio output devices during initialization");
+                            
+                            for (uint i = 0; i < deviceCount; i++)
+                            {
+                                try
+                                {
+                                    IMMDevice device;
+                                    deviceCollection.Item(i, out device);
+                                    
+                                    string deviceId = GetDeviceId(device);
+                                    string deviceName;
+                                    try
+                                    {
+                                        deviceName = GetDeviceFriendlyName(device);
+                                    }
+                                    catch (Exception nameEx)
+                                    {
+                                        Console.WriteLine($"Failed to get device name for device {i}: {nameEx.Message}");
+                                        deviceName = $"Audio Device {i + 1}";
+                                    }
+                                    
+                                    Console.WriteLine($"Processing device {i}: {deviceName} (ID: {deviceId})");
+                                    
+                                    // Create container for this device using device ID
+                                    string containerId = $"audio-meter-{deviceId.Replace("{", "").Replace("}", "").Replace(".", "-")}";
+                                    PluginContainer deviceContainer = new(containerId, $"🎵 {deviceName}");
+                                    deviceContainer.Entries.Add(new PluginText("device-name", "Device", deviceName));
+                                    deviceContainer.Entries.Add(new PluginSensor("audio-level", "Audio Level", 0f, "%"));
+                                    
+                                    _containers.Add(deviceContainer);
+                                    _decayValues[containerId] = 0f;
+                                    
+                                    // Cache the device with the container ID
+                                    _audioDevices[containerId] = device;
+                                    
+                                    Console.WriteLine($"✅ Pre-created container for: {deviceName}");
+                                }
+                                catch (Exception deviceEx)
+                                {
+                                    Console.WriteLine($"⚠️ Failed to process device {i}: {deviceEx.Message}");
+                                    Console.WriteLine($"⚠️ Exception type: {deviceEx.GetType().Name}");
+                                    if (deviceEx.InnerException != null)
+                                    {
+                                        Console.WriteLine($"⚠️ Inner exception: {deviceEx.InnerException.Message}");
+                                    }
+                                    
+                                    // Create fallback container for this device index
+                                    try
+                                    {
+                                        string fallbackId = $"audio-device-{i}";
+                                        PluginContainer fallbackContainer = new(fallbackId, $"🎵 Audio Device {i + 1}");
+                                        fallbackContainer.Entries.Add(new PluginText("device-name", "Device", $"Audio Device {i + 1}"));
+                                        fallbackContainer.Entries.Add(new PluginSensor("audio-level", "Audio Level", 0f, "%"));
+                                        
+                                        _containers.Add(fallbackContainer);
+                                        _decayValues[fallbackId] = 0f;
+                                        
+                                        Console.WriteLine($"✅ Created fallback container: Audio Device {i + 1}");
+                                    }
+                                    catch (Exception fallbackEx)
+                                    {
+                                        Console.WriteLine($"⚠️ Failed to create fallback container {i}: {fallbackEx.Message}");
+                                    }
+                                }
+                            }
+                            
+                            Marshal.ReleaseComObject(deviceCollection);
+                            Console.WriteLine($"Successfully created {_containers.Count - 1} device containers"); // -1 for default
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Failed to enumerate devices. HRESULT: 0x{hr:X8}");
+                        }
+                    }
+                    catch (Exception enumEx)
+                    {
+                        Console.WriteLine($"⚠️ Device enumeration failed: {enumEx.Message}");
+                        Console.WriteLine($"Exception type: {enumEx.GetType().Name}");
+                    }
+                }
+                
+                Console.WriteLine($"AudioLevelMeter initialization complete - created {_containers.Count} containers");
             }
             catch (Exception ex)
             {
@@ -164,13 +259,63 @@ namespace AudioLevelMeterPlugin
             }
         }
 
+        private void InitializeCoreAudioAPI()
+        {
+            try
+            {
+                var clsid = new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E"); // CLSID_MMDeviceEnumerator
+                var iid = typeof(IMMDeviceEnumerator).GUID;
+                IntPtr pUnknown;
+                int hr = CoCreateInstance(ref clsid, IntPtr.Zero, 1, ref iid, out pUnknown);
+                
+                if (hr == S_OK && pUnknown != IntPtr.Zero)
+                {
+                    _deviceEnumerator = (IMMDeviceEnumerator)Marshal.GetObjectForIUnknown(pUnknown);
+                    Marshal.Release(pUnknown);
+                    Console.WriteLine("Core Audio API enumerator created successfully");
+                }
+                else
+                {
+                    Console.WriteLine($"Failed to create Core Audio API enumerator. HRESULT: 0x{hr:X8}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Core Audio API initialization failed: {ex.Message}");
+            }
+        }
+
         public override void Load(List<IPluginContainer> containers)
         {
             containers.AddRange(_containers.Cast<IPluginContainer>());
         }
 
         /// <summary>
-        /// Gets the friendly name of an audio device
+        /// Safely gets the device ID from an IMMDevice
+        /// </summary>
+        private string GetDeviceId(IMMDevice device)
+        {
+            try
+            {
+                IntPtr deviceIdPtr;
+                int hr = device.GetId(out deviceIdPtr);
+                if (hr == S_OK && deviceIdPtr != IntPtr.Zero)
+                {
+                    string? deviceIdStr = Marshal.PtrToStringUni(deviceIdPtr);
+                    Marshal.FreeCoTaskMem(deviceIdPtr);
+                    return deviceIdStr ?? "Unknown";
+                }
+                return "Unknown";
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to get device ID: {ex.Message}");
+                return "Unknown";
+            }
+        }
+
+        /// <summary>
+        /// Gets the friendly name of an audio device (simplified version)
         /// </summary>
         private string GetDeviceFriendlyName(IMMDevice device)
         {
@@ -214,129 +359,184 @@ namespace AudioLevelMeterPlugin
             {
                 try
                 {
-                    // Lazy initialization of Windows Core Audio API
-                    if (_deviceEnumerator == null)
+                    Console.WriteLine("Update: Starting...");
+                    
+                    // Initialize audio meters if not already done
+                    if (_audioMeters.Count == 0 && _deviceEnumerator != null)
                     {
-                        try
-                        {
-                            Console.WriteLine("Attempting Windows Core Audio API initialization...");
-                            
-                            // Create MMDeviceEnumerator COM object using CoCreateInstance to avoid NAudio conflicts
-                            Guid clsid = new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E");
-                            Guid iid = typeof(IMMDeviceEnumerator).GUID;
-                            IntPtr enumeratorPtr;
-                            
-                            int hr = CoCreateInstance(ref clsid, IntPtr.Zero, CLSCTX_INPROC_SERVER, ref iid, out enumeratorPtr);
-                            if (hr != S_OK)
-                            {
-                                Console.WriteLine($"CoCreateInstance failed with HRESULT: 0x{hr:X8}");
-                                throw new System.ComponentModel.Win32Exception(hr);
-                            }
-                            
-                            _deviceEnumerator = (IMMDeviceEnumerator)Marshal.GetObjectForIUnknown(enumeratorPtr);
-                            Marshal.Release(enumeratorPtr);
-                            
-                            Console.WriteLine("Core Audio API enumerator created successfully");
-                            
-                            // Get default audio device
-                            IMMDevice defaultDevice;
-                            hr = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia, out defaultDevice);
-                            if (hr == S_OK)
-                            {
-                                _defaultDevice = defaultDevice;
-                                
-                                // Get device friendly name
-                                string deviceName = GetDeviceFriendlyName(defaultDevice);
-                                
-                                // Update container with real device info
-                                var container = _containers.FirstOrDefault(c => c.Id == "default-audio");
-                                if (container != null)
-                                {
-                                    var deviceNameEntry = container.Entries.OfType<PluginText>().FirstOrDefault(e => e.Id == "device-name");
-                                    if (deviceNameEntry != null)
-                                    {
-                                        deviceNameEntry.Value = deviceName;
-                                        Console.WriteLine($"Updated container with device: {deviceName}");
-                                    }
-                                }
-                                
-                                // Get audio meter interface
-                                Guid audioMeterGuid = typeof(IAudioMeterInformation).GUID;
-                                IntPtr audioMeterPtr;
-                                hr = defaultDevice.Activate(ref audioMeterGuid, 0, IntPtr.Zero, out audioMeterPtr);
-                                if (hr == S_OK)
-                                {
-                                    _audioMeter = (IAudioMeterInformation)Marshal.GetObjectForIUnknown(audioMeterPtr);
-                                    Console.WriteLine("Audio meter interface activated successfully");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Windows Core Audio API initialization failed: {ex.Message}");
-                            Console.WriteLine($"Exception type: {ex.GetType().Name}");
-                            if (ex.InnerException != null)
-                            {
-                                Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
-                            }
-                            Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                            _initializationFailed = true;
-                            
-                            // Update container to show error
-                            var container = _containers.FirstOrDefault(c => c.Id == "default-audio");
-                            if (container != null)
-                            {
-                                var deviceNameEntry = container.Entries.OfType<PluginText>().FirstOrDefault(e => e.Id == "device-name");
-                                if (deviceNameEntry != null)
-                                {
-                                    deviceNameEntry.Value = "Core Audio Error";
-                                }
-                            }
-                            return;
-                        }
+                        Console.WriteLine("Update: Initializing audio meters...");
+                        InitializeAudioMeters();
                     }
 
-                    // Get real-time audio levels
-                    if (_audioMeter != null)
-                    {
-                        try
-                        {
-                            float peakValue;
-                            int hr = _audioMeter.GetPeakValue(out peakValue);
-                            if (hr == S_OK)
-                            {
-                                // Apply decay for realistic VU meter
-                                string containerId = "default-audio";
-                                float currentDecayValue = _decayValues.GetValueOrDefault(containerId, 0f);
-                                currentDecayValue = Math.Max(peakValue, currentDecayValue * 0.85f);
-                                _decayValues[containerId] = currentDecayValue;
+                    Console.WriteLine("Update: Updating default device level...");
+                    // Update default device audio level
+                    UpdateDefaultDeviceLevel();
 
-                                // Update the audio level sensor
-                                var container = _containers.FirstOrDefault(c => c.Id == containerId);
-                                var sensor = container?.Entries.OfType<PluginSensor>().FirstOrDefault(s => s.Id == "audio-level");
-                                if (sensor != null)
-                                {
-                                    sensor.Value = currentDecayValue * 100f; // Convert to percentage
-                                }
-                            }
-                        }
-                        catch (Exception audioEx)
-                        {
-                            Console.WriteLine($"Error reading audio levels: {audioEx.Message}");
-                            // Set sensor to 0 on error
-                            var container = _containers.FirstOrDefault(c => c.Id == "default-audio");
-                            var sensor = container?.Entries.OfType<PluginSensor>().FirstOrDefault(s => s.Id == "audio-level");
-                            if (sensor != null)
-                            {
-                                sensor.Value = 0f;
-                            }
-                        }
-                    }
+                    Console.WriteLine("Update: Updating all device levels...");
+                    // Update all device audio levels
+                    UpdateAllDeviceLevels();
+                    
+                    Console.WriteLine("Update: Completed successfully");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"AudioLevelMeter Update error: {ex.Message}");
+                    Console.WriteLine($"Update error: {ex.Message}");
+                    Console.WriteLine($"Exception type: {ex.GetType().Name}");
+                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 }
+            }
+        }
+
+        private void InitializeAudioMeters()
+        {
+            try
+            {
+                // Activate audio meters for all cached devices
+                foreach (var kvp in _audioDevices)
+                {
+                    try
+                    {
+                        string containerId = kvp.Key;
+                        IMMDevice device = kvp.Value;
+                        
+                        // Get audio meter interface for this device
+                        Guid audioMeterGuid = typeof(IAudioMeterInformation).GUID;
+                        IntPtr audioMeterPtr;
+                        int hr = device.Activate(ref audioMeterGuid, 0, IntPtr.Zero, out audioMeterPtr);
+                        if (hr == S_OK)
+                        {
+                            _audioMeters[containerId] = (IAudioMeterInformation)Marshal.GetObjectForIUnknown(audioMeterPtr);
+                            Console.WriteLine($"✅ Audio meter activated for device: {containerId}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"⚠️ Failed to activate audio meter for device: {containerId} (HR: 0x{hr:X8})");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ Failed to activate audio meter for device: {ex.Message}");
+                    }
+                }
+                
+                Console.WriteLine($"Successfully initialized {_audioMeters.Count} audio meters");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Audio meter initialization error: {ex.Message}");
+            }
+        }
+
+        private void UpdateDefaultDeviceLevel()
+        {
+            try
+            {
+                // Get the current default device
+                if (_deviceEnumerator != null)
+                {
+                    IMMDevice defaultDevice;
+                    int hr = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia, out defaultDevice);
+                    if (hr == S_OK)
+                    {
+                        string deviceId = GetDeviceId(defaultDevice);
+                        string deviceName = GetDeviceFriendlyName(defaultDevice);
+                        
+                        // Update default container with current default device info
+                        var container = _containers.FirstOrDefault(c => c.Id == "default-audio");
+                        if (container != null)
+                        {
+                            var deviceNameEntry = container.Entries.OfType<PluginText>().FirstOrDefault(e => e.Id == "device-name");
+                            var audioLevelEntry = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "audio-level");
+                            
+                            if (deviceNameEntry != null)
+                            {
+                                deviceNameEntry.Value = deviceName;
+                            }
+                            
+                            // Get audio level for default device
+                            if (audioLevelEntry != null)
+                            {
+                                try
+                                {
+                                    Guid audioMeterGuid = typeof(IAudioMeterInformation).GUID;
+                                    IntPtr audioMeterPtr;
+                                    hr = defaultDevice.Activate(ref audioMeterGuid, 0, IntPtr.Zero, out audioMeterPtr);
+                                    if (hr == S_OK)
+                                    {
+                                        var audioMeter = (IAudioMeterInformation)Marshal.GetObjectForIUnknown(audioMeterPtr);
+                                        
+                                        float peakValue;
+                                        audioMeter.GetPeakValue(out peakValue);
+                                        
+                                        // Apply decay algorithm
+                                        float currentValue = _decayValues["default-audio"];
+                                        float newValue = Math.Max(peakValue * 100f, currentValue * 0.85f);
+                                        _decayValues["default-audio"] = newValue;
+                                        audioLevelEntry.Value = newValue;
+                                        
+                                        Marshal.ReleaseComObject(audioMeter);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"Default device audio level error: {ex.Message}");
+                                }
+                            }
+                        }
+                        
+                        Marshal.ReleaseComObject(defaultDevice);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Default device update error: {ex.Message}");
+            }
+        }
+
+        private void UpdateAllDeviceLevels()
+        {
+            try
+            {
+                // Update audio levels for all devices with active meters
+                foreach (var kvp in _audioMeters)
+                {
+                    try
+                    {
+                        string containerId = kvp.Key;
+                        if (containerId == "default-audio") continue; // Already handled above
+                        
+                        IAudioMeterInformation audioMeter = kvp.Value;
+                        
+                        // Find the container for this device
+                        var container = _containers.FirstOrDefault(c => c.Id == containerId);
+                        if (container != null)
+                        {
+                            var audioLevelEntry = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "audio-level");
+                            if (audioLevelEntry != null)
+                            {
+                                float peakValue;
+                                int hr = audioMeter.GetPeakValue(out peakValue);
+                                if (hr == S_OK)
+                                {
+                                    // Apply decay algorithm
+                                    float currentValue = _decayValues.ContainsKey(containerId) ? _decayValues[containerId] : 0f;
+                                    float newValue = Math.Max(peakValue * 100f, currentValue * 0.85f);
+                                    _decayValues[containerId] = newValue;
+                                    audioLevelEntry.Value = newValue;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Device audio level update error: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"All devices update error: {ex.Message}");
             }
         }
 
@@ -352,19 +552,35 @@ namespace AudioLevelMeterPlugin
             {
                 Console.WriteLine("AudioLevelMeter closing...");
                 
-                // Release COM objects
-                if (_audioMeter != null)
+                // Release all audio meter COM objects
+                foreach (var audioMeter in _audioMeters.Values)
                 {
-                    Marshal.ReleaseComObject(_audioMeter);
-                    _audioMeter = null;
+                    try
+                    {
+                        Marshal.ReleaseComObject(audioMeter);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error releasing audio meter: {ex.Message}");
+                    }
                 }
+                _audioMeters.Clear();
                 
-                if (_defaultDevice != null)
+                // Release all audio device COM objects
+                foreach (var device in _audioDevices.Values)
                 {
-                    Marshal.ReleaseComObject(_defaultDevice);
-                    _defaultDevice = null;
+                    try
+                    {
+                        Marshal.ReleaseComObject(device);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error releasing audio device: {ex.Message}");
+                    }
                 }
+                _audioDevices.Clear();
                 
+                // Release device enumerator
                 if (_deviceEnumerator != null)
                 {
                     Marshal.ReleaseComObject(_deviceEnumerator);

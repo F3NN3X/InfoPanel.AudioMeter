@@ -55,6 +55,28 @@ class Program
                 }
             }
             
+            // Show all containers and their contents after dynamic loading
+            // In InfoPanel, this would be handled differently - InfoPanel sees all containers
+            // as they're added dynamically during updates
+            Console.WriteLine($"\n📊 Final container count: {containers.Count} (initial load)");
+            Console.WriteLine("Note: Dynamic containers are created during updates in the real InfoPanel system");
+            foreach (var container in containers)
+            {
+                Console.WriteLine($"  - {container.Id}: {container.Name}");
+                Console.WriteLine($"    Entries: {container.Entries.Count}");
+                foreach (var entry in container.Entries)
+                {
+                    if (entry is InfoPanel.Plugins.PluginSensor sensor)
+                    {
+                        Console.WriteLine($"      📈 {sensor.Name}: {sensor.Value}{sensor.Unit}");
+                    }
+                    else if (entry is InfoPanel.Plugins.PluginText text)
+                    {
+                        Console.WriteLine($"      📝 {text.Name}: {text.Value}");
+                    }
+                }
+            }
+            
             // Cleanup
             plugin.Close();
             Console.WriteLine("Plugin test completed successfully!");
