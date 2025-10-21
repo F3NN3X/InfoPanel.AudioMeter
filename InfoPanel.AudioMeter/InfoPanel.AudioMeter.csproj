@@ -93,8 +93,31 @@
     <Message Text="Release ZIP created successfully: $(ZipOutputPath)" Importance="high" />
   </Target>
 
+  <!-- Copy plugin to InfoPanel directory for development/testing -->
+  <Target Name="CopyToInfoPanel" AfterTargets="CreateReleaseZip" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <InfoPanelPluginDir>C:\ProgramData\InfoPanel\plugins\InfoPanel.AudioMeter</InfoPanelPluginDir>
+    </PropertyGroup>
+    
+    <Message Text="Copying plugin files to InfoPanel directory: $(InfoPanelPluginDir)" Importance="high" />
+    
+    <!-- Create InfoPanel plugin directory if it doesn't exist -->
+    <MakeDir Directories="$(InfoPanelPluginDir)" />
+    
+    <!-- Copy all plugin files to InfoPanel directory -->
+    <ItemGroup>
+      <PluginFiles Include="$(OutputPath)**\*.*" />
+    </ItemGroup>
+    
+    <Copy SourceFiles="@(PluginFiles)" 
+          DestinationFiles="@(PluginFiles->'$(InfoPanelPluginDir)\%(RecursiveDir)%(Filename)%(Extension)')" 
+          OverwriteReadOnlyFiles="true" />
+    
+    <Message Text="Plugin files copied successfully to InfoPanel directory" Importance="high" />
+  </Target>
+
   <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Serilog" Version="4.1.0" />
   </ItemGroup>
 
   <ItemGroup>

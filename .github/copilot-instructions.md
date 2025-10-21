@@ -36,12 +36,26 @@ public class MyPlugin : BasePlugin
 
 ## Audio-Specific Implementation Details
 
-### NAudio Integration
+### Multi-Device NAudio Integration
 - Uses `NAudio.CoreAudioApi` for Windows audio system access
-- Get default audio device: `new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia)`
+- Enumerate devices: `_deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)`
+- Get default device: `new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia)`
 - Read peak levels: `device.AudioMeterInformation.PeakValues` (returns left/right channel array)
+- Device caching: Maintain `Dictionary<string, MMDevice>` for device instances
+- Device disposal: Properly dispose all cached devices in `Close()` method
 
 ### VU Meter Behavior
+- **Decay Algorithm**: Apply `_currentValue = Math.Max(peakValue, _currentValue * 0.85f)` for realistic falloff
+- **Update Frequency**: 50ms intervals for smooth visual metering
+- **Value Scaling**: Convert 0.0-1.0 peak values to 0-100% for display
+- **Channel Averaging**: Average left/right channels: `(leftPeak + rightPeak) / 2`
+- **Per-Device Decay**: Each device maintains independent decay values in `Dictionary<string, float>`
+
+### Multi-Device Container Pattern
+- **Default Container**: Special container (`default-audio-meter`) that tracks Windows default device
+- **Device Containers**: Individual containers per device with pattern `audio-meter-{deviceId}`
+- **Device Information**: Include `PluginText` entries for device names and friendly names
+- **Dynamic Default Tracking**: Default container follows device changes automatically
 
 ## Logging Guidelines
  - Use **Serilog** for all logging. Each class should declare its own logger:

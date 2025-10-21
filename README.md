@@ -4,15 +4,17 @@
 [![NAudio](https://img.shields.io/badge/NAudio-2.2.1-green.svg)](https://github.com/naudio/NAudio)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A real-time audio level monitoring plugin for [InfoPanel](https://github.com/InfoPanel-Project/InfoPanel) that provides VU meter functionality with smooth decay effects.
+A real-time audio level monitoring plugin for [InfoPanel](https://github.com/InfoPanel-Project/InfoPanel) that provides VU meter functionality with smooth decay effects for all audio output devices.
 
 ## Features
 
-- 🎵 **Real-time Audio Monitoring** - Tracks system audio output levels in real-time
+- 🎵 **Multi-Device Audio Monitoring** - Tracks audio levels from all available output devices
 - 📊 **VU Meter with Decay** - Realistic falloff algorithm for smooth visual metering  
-- 🔊 **Multi-channel Support** - Averages left and right audio channels
+- 🔊 **Multi-channel Support** - Averages left and right audio channels per device
+- 🎛️ **Default Device Tracking** - Automatically follows Windows default audio device changes
 - ⚡ **High Refresh Rate** - 50ms update intervals for fluid animations
 - 🎯 **Percentage Display** - Converts audio levels to 0-100% scale
+- 🏷️ **Device Information** - Shows friendly names and device details
 - 🔌 **InfoPanel Integration** - Seamless plugin architecture compatibility
 
 ## Installation
@@ -37,13 +39,15 @@ A real-time audio level monitoring plugin for [InfoPanel](https://github.com/Inf
 
 ## Usage
 
-Once installed, the Audio Meter plugin will appear in InfoPanel's sensor list:
+Once installed, the Audio Meter plugin will appear in InfoPanel's sensor list with multiple containers:
 
-- **Container**: Audio Meter
-- **Sensor**: Audio Level (0-100%)
+- **Default Audio Meter** - Automatically tracks the Windows default audio device
+  - Device name and audio level (0-100%)
+- **Audio Meter - [Device Name]** - Individual containers for each available audio device
+  - Device friendly name, device name, and audio level (0-100%)
 - **Update Rate**: 20 FPS (50ms intervals)
 
-The plugin automatically detects your default audio output device and begins monitoring audio levels immediately.
+The plugin automatically detects all available audio output devices and provides real-time monitoring for each device independently. When you change your default audio device in Windows, the "Default Audio Meter" container will automatically switch to monitor the new device.
 
 ## Development
 
@@ -85,12 +89,27 @@ InfoPanel.AudioMeter/
 
 ## Technical Details
 
-### Audio Processing
+### Multi-Device Audio Processing
 
 - **Library**: NAudio.CoreAudioApi for Windows audio system access
-- **Device Detection**: Automatically uses default multimedia audio endpoint
-- **Channel Processing**: Averages left/right peak values for mono output
+- **Device Discovery**: Enumerates all active audio render endpoints
+- **Device Management**: Maintains device cache with proper disposal patterns
+- **Default Device Tracking**: Dynamically follows Windows default device changes
+- **Channel Processing**: Averages left/right peak values for mono output per device
 - **Decay Algorithm**: `Math.Max(peakValue, currentValue * 0.85f)` for realistic VU meter behavior
+
+### Device Container Structure
+
+Each audio device gets its own container with:
+- **Device Information**: Friendly name and device name
+- **Audio Level Sensor**: Real-time level monitoring (0-100%)
+- **Independent Decay Values**: Each device maintains its own VU meter state
+
+### Logging Integration
+
+- **Serilog**: Structured logging with class-specific loggers
+- **Device Events**: Logs device initialization, errors, and lifecycle events
+- **Performance**: Debug-level logging for audio level updates
 
 ### Plugin Architecture
 

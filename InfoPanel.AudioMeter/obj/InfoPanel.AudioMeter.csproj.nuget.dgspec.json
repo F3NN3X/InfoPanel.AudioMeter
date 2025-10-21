@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {}
+    "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {}
   },
   "projects": {
-    "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {
+    "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
+        "projectUniqueName": "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
         "projectName": "InfoPanel.AudioMeter",
-        "projectPath": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
+        "projectPath": "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
         "packagesPath": "C:\\Users\\joransrb\\.nuget\\packages\\",
-        "outputPath": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\obj\\",
+        "outputPath": "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -56,9 +56,9 @@
         "net8.0-windows7.0": {
           "targetAlias": "net8.0-windows",
           "dependencies": {
-            "NAudio": {
+            "Serilog": {
               "target": "Package",
-              "version": "[2.2.1, )"
+              "version": "[4.1.0, )"
             }
           },
           "imports": [

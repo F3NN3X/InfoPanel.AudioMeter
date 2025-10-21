@@ -8,10 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Upcoming features and improvements will be listed here
+- Multi-device audio monitoring support for all available output devices
+- Enhanced device container pattern with individual device tracking
+- Dynamic default device tracking that follows Windows audio device changes
+- Serilog structured logging integration for better diagnostics
 
 ### Changed
-- Future changes will be documented here
+- Major architecture upgrade to support multiple audio devices simultaneously
+- Container structure expanded from single device to multi-device pattern
+- Device management improved with proper caching and disposal patterns
+- Documentation updated to reflect multi-device capabilities
 
 ### Deprecated
 - Features that will be removed in future versions
