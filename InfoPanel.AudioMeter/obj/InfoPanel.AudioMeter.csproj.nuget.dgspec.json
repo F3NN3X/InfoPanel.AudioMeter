@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {}
+    "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {}
   },
   "projects": {
-    "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {
+    "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
+        "projectUniqueName": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
         "projectName": "InfoPanel.AudioMeter",
-        "projectPath": "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
+        "projectPath": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
         "packagesPath": "C:\\Users\\joransrb\\.nuget\\packages\\",
-        "outputPath": "e:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\obj\\",
+        "outputPath": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

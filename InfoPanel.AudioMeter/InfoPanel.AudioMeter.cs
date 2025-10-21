@@ -316,39 +316,45 @@ namespace AudioLevelMeterPlugin
 
         /// <summary>
         /// Scales raw audio peak value (0.0-1.0) to a more responsive VU meter percentage (0-100)
+        /// Very aggressive scaling that pushes music at 100% volume to consistently hit 95-100%
         /// </summary>
         private float ScaleAudioLevel(float peakValue)
         {
             if (peakValue <= 0f) return 0f;
             
-            // Enhanced scaling that makes typical music (peaking around 0.3-0.4) reach 75-85%
-            // This gives a more realistic VU meter feel where loud music hits the high ranges
+            // Ultra-responsive scaling designed to make loud music hit 95-100% consistently
+            // Most music at full volume peaks around 0.25-0.45, we want this to show 95-100%
             float scaledValue;
             
-            if (peakValue <= 0.02f)
+            if (peakValue <= 0.01f)
             {
                 // Very quiet sounds: linear scaling
-                scaledValue = peakValue * 250f; // 0.02 -> 5%
+                scaledValue = peakValue * 300f; // 0.01 -> 3%
             }
-            else if (peakValue <= 0.1f)
+            else if (peakValue <= 0.05f)
             {
-                // Quiet to moderate: gentle acceleration
-                scaledValue = 5f + (peakValue - 0.02f) * 375f; // 0.02-0.1 -> 5%-35%
+                // Quiet sounds: gentle acceleration
+                scaledValue = 3f + (peakValue - 0.01f) * 450f; // 0.01-0.05 -> 3%-21%
             }
-            else if (peakValue <= 0.3f)
+            else if (peakValue <= 0.15f)
             {
-                // Moderate sounds: this is where most music lives, scale aggressively
-                scaledValue = 35f + (peakValue - 0.1f) * 225f; // 0.1-0.3 -> 35%-80%
+                // Moderate sounds: steeper curve
+                scaledValue = 21f + (peakValue - 0.05f) * 390f; // 0.05-0.15 -> 21%-60%
             }
-            else if (peakValue <= 0.6f)
+            else if (peakValue <= 0.25f)
             {
-                // Loud sounds: scale to high meter readings
-                scaledValue = 80f + (peakValue - 0.3f) * 50f; // 0.3-0.6 -> 80%-95%
+                // Loud music territory: very aggressive scaling
+                scaledValue = 60f + (peakValue - 0.15f) * 300f; // 0.15-0.25 -> 60%-90%
+            }
+            else if (peakValue <= 0.4f)
+            {
+                // Peak music content: push to near-maximum
+                scaledValue = 90f + (peakValue - 0.25f) * 60f; // 0.25-0.4 -> 90%-99%
             }
             else
             {
-                // Very loud/peaks: final push to 100%
-                scaledValue = 95f + (peakValue - 0.6f) * 12.5f; // 0.6-1.0 -> 95%-100%
+                // True peaks: ensure we hit 100%
+                scaledValue = 99f + (peakValue - 0.4f) * 1.67f; // 0.4-1.0 -> 99%-100%
             }
             
             return Math.Min(scaledValue, 100f);

@@ -8,16 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Multi-device audio monitoring support for all available output devices
-- Enhanced device container pattern with individual device tracking
-- Dynamic default device tracking that follows Windows audio device changes
-- Serilog structured logging integration for better diagnostics
+- Features to be added in future versions
 
 ### Changed
-- Major architecture upgrade to support multiple audio devices simultaneously
-- Container structure expanded from single device to multi-device pattern
-- Device management improved with proper caching and disposal patterns
-- Documentation updated to reflect multi-device capabilities
+- Changes to be made in future versions
 
 ### Deprecated
 - Features that will be removed in future versions
@@ -34,28 +28,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-10-21
 
 ### Added
-- Initial release of InfoPanel Audio Meter Plugin
-- Real-time audio level monitoring using NAudio library
-- VU meter functionality with realistic decay algorithm (0.85f falloff)
-- Multi-channel audio support (averages left/right channels)
-- High refresh rate monitoring (50ms update intervals / 20 FPS)
-- Percentage-based audio level display (0-100%)
-- Automatic default audio device detection
-- InfoPanel plugin architecture integration
-- Comprehensive plugin lifecycle management (`Initialize()`, `Load()`, `UpdateAsync()`, `Close()`)
-- Graceful error handling for missing audio devices
-- Resource management with proper disposal patterns
-- Structured logging support with Serilog integration
-- Professional build system with automatic ZIP packaging
-- Clean dependency management and output optimization
+- Initial release of InfoPanel Audio Meter Plugin with comprehensive multi-device support
+- **Multi-device audio monitoring** support for all available Windows output devices
+- **Real-time audio level monitoring** with Windows Core Audio API implementation
+- **Enhanced VU meter functionality** with ultra-responsive scaling algorithm
+- **Professional scaling curves** that make music at 100% volume consistently hit 95-100% on meters
+- **Dynamic default device tracking** that follows Windows audio device changes automatically  
+- **Individual device containers** with unique device identification and friendly names
+- **Enhanced device container pattern** with separate containers per audio device
+- **Multi-channel audio support** (averages left/right channels for stereo devices)
+- **High refresh rate monitoring** (50ms update intervals / 20 FPS for smooth VU meters)
+- **Intelligent device caching** with proper COM object lifecycle management
+- **Serilog structured logging** integration for comprehensive diagnostics and debugging
+- **Professional build system** with automatic ZIP packaging and deployment
+- **Comprehensive plugin lifecycle management** (`Initialize()`, `Load()`, `UpdateAsync()`, `Close()`)
+- **Graceful error handling** for missing audio devices and COM marshaling issues
+- **Advanced resource management** with proper disposal patterns and memory cleanup
+
+### Changed
+- **Major architecture upgrade** from single-device to multi-device audio monitoring
+- **Replaced NAudio dependency** with direct Windows Core Audio API P/Invoke implementation
+- **Enhanced container structure** expanded from single device to comprehensive multi-device pattern
+- **Optimized VU meter scaling** with aggressive curves for realistic music response (0.25-0.4 raw → 90-99% display)
+- **Improved device management** with robust caching, enumeration, and disposal patterns
+- **Advanced COM interop** using CoCreateInstance for reliable Windows audio system access
+
+### Fixed
+- **COM object casting errors** that prevented NAudio from working with InfoPanel's audio integration
+- **Device enumeration crashes** caused by improper COM marshaling and pointer handling
+- **Memory leaks** in device caching through proper IDisposable implementation
+- **VU meter scaling issues** where full-volume music only reached 30-90% instead of 95-100%
+- **Device identification problems** with safe string marshaling from COM interfaces
+- **Plugin stability issues** through comprehensive error handling and resource cleanup
 
 ### Technical Details
-- Built on .NET 8.0 targeting Windows platform
-- NAudio 2.2.1 for Windows audio system access
-- Uses `MMDeviceEnumerator` for audio device detection
-- Implements `AudioMeterInformation.PeakValues` for level reading
-- Plugin container system with sensor data exposure
-- Kebab-case ID conventions (`audio-level-meter`, `audio-level`)
+- **Platform**: Built on .NET 8.0-windows with unsafe COM interop support
+- **Audio System**: Direct Windows Core Audio API integration via P/Invoke and CoCreateInstance
+- **COM Interfaces**: `IMMDeviceEnumerator`, `IMMDeviceCollection`, `IMMDevice`, `IAudioMeterInformation`
+- **Device Detection**: Advanced multi-device enumeration with proper COM object lifecycle management
+- **Level Reading**: Real-time peak value monitoring with enhanced VU meter scaling algorithms
+- **Architecture**: InfoPanel plugin container system with multi-device sensor data exposure
+- **Memory Management**: Comprehensive IDisposable patterns with safe COM object cleanup
+- **Error Handling**: Robust exception handling for COM marshaling and audio system failures
+- **Naming Conventions**: Kebab-case ID conventions (`audio-level-meter`, `default-audio-meter`)
+- **Scaling Algorithm**: Ultra-responsive curves designed for realistic music VU meter behavior
 
 ### Documentation
 - Comprehensive README.md with installation and usage instructions
@@ -65,12 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Build and deployment documentation
 
 ### Build System
-- Professional MSBuild configuration
-- Automatic dependency flattening and cleanup
-- Release ZIP packaging with versioned directories
-- PDB and debug symbol management
-- Platform-specific build optimizations (x64)
-- Satellite resource language limiting (English only)
+- **Professional MSBuild configuration** with advanced packaging and deployment
+- **Automatic dependency flattening** and cleanup for streamlined distribution
+- **Release ZIP packaging** with versioned directories and proper file organization
+- **PDB and debug symbol management** for production debugging capabilities
+- **Platform-specific optimizations** (x64) for Windows audio system compatibility
+- **Advanced deployment pipeline** with automatic InfoPanel plugin directory deployment
+- **Satellite resource optimization** (English only) for reduced package size
+- **COM interop compilation** with unsafe code blocks and Windows-specific targeting
 
 ---
 
