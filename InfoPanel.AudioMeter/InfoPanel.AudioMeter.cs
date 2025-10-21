@@ -315,6 +315,46 @@ namespace AudioLevelMeterPlugin
         }
 
         /// <summary>
+        /// Scales raw audio peak value (0.0-1.0) to a more responsive VU meter percentage (0-100)
+        /// </summary>
+        private float ScaleAudioLevel(float peakValue)
+        {
+            if (peakValue <= 0f) return 0f;
+            
+            // Enhanced scaling that makes typical music (peaking around 0.3-0.4) reach 75-85%
+            // This gives a more realistic VU meter feel where loud music hits the high ranges
+            float scaledValue;
+            
+            if (peakValue <= 0.02f)
+            {
+                // Very quiet sounds: linear scaling
+                scaledValue = peakValue * 250f; // 0.02 -> 5%
+            }
+            else if (peakValue <= 0.1f)
+            {
+                // Quiet to moderate: gentle acceleration
+                scaledValue = 5f + (peakValue - 0.02f) * 375f; // 0.02-0.1 -> 5%-35%
+            }
+            else if (peakValue <= 0.3f)
+            {
+                // Moderate sounds: this is where most music lives, scale aggressively
+                scaledValue = 35f + (peakValue - 0.1f) * 225f; // 0.1-0.3 -> 35%-80%
+            }
+            else if (peakValue <= 0.6f)
+            {
+                // Loud sounds: scale to high meter readings
+                scaledValue = 80f + (peakValue - 0.3f) * 50f; // 0.3-0.6 -> 80%-95%
+            }
+            else
+            {
+                // Very loud/peaks: final push to 100%
+                scaledValue = 95f + (peakValue - 0.6f) * 12.5f; // 0.6-1.0 -> 95%-100%
+            }
+            
+            return Math.Min(scaledValue, 100f);
+        }
+
+        /// <summary>
         /// Gets the friendly name of an audio device (simplified version)
         /// </summary>
         private string GetDeviceFriendlyName(IMMDevice device)
@@ -359,30 +399,21 @@ namespace AudioLevelMeterPlugin
             {
                 try
                 {
-                    Console.WriteLine("Update: Starting...");
-                    
                     // Initialize audio meters if not already done
                     if (_audioMeters.Count == 0 && _deviceEnumerator != null)
                     {
-                        Console.WriteLine("Update: Initializing audio meters...");
                         InitializeAudioMeters();
                     }
 
-                    Console.WriteLine("Update: Updating default device level...");
                     // Update default device audio level
                     UpdateDefaultDeviceLevel();
 
-                    Console.WriteLine("Update: Updating all device levels...");
                     // Update all device audio levels
                     UpdateAllDeviceLevels();
-                    
-                    Console.WriteLine("Update: Completed successfully");
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Update error: {ex.Message}");
-                    Console.WriteLine($"Exception type: {ex.GetType().Name}");
-                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 }
             }
         }
@@ -468,9 +499,12 @@ namespace AudioLevelMeterPlugin
                                         float peakValue;
                                         audioMeter.GetPeakValue(out peakValue);
                                         
+                                        // Scale the audio level for better VU meter response
+                                        float scaledLevel = ScaleAudioLevel(peakValue);
+                                        
                                         // Apply decay algorithm
                                         float currentValue = _decayValues["default-audio"];
-                                        float newValue = Math.Max(peakValue * 100f, currentValue * 0.85f);
+                                        float newValue = Math.Max(scaledLevel, currentValue * 0.85f);
                                         _decayValues["default-audio"] = newValue;
                                         audioLevelEntry.Value = newValue;
                                         
@@ -519,9 +553,12 @@ namespace AudioLevelMeterPlugin
                                 int hr = audioMeter.GetPeakValue(out peakValue);
                                 if (hr == S_OK)
                                 {
+                                    // Scale the audio level for better VU meter response
+                                    float scaledLevel = ScaleAudioLevel(peakValue);
+                                    
                                     // Apply decay algorithm
                                     float currentValue = _decayValues.ContainsKey(containerId) ? _decayValues[containerId] : 0f;
-                                    float newValue = Math.Max(peakValue * 100f, currentValue * 0.85f);
+                                    float newValue = Math.Max(scaledLevel, currentValue * 0.85f);
                                     _decayValues[containerId] = newValue;
                                     audioLevelEntry.Value = newValue;
                                 }

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("InfoPanel.AudioMeter")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+abb556afb414c8eda49be6e6f121b6c79ddc2a39")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6ef9fa02980265b0190b98595b376b1020738fa4")]
 [assembly: System.Reflection.AssemblyProductAttribute("InfoPanel.AudioMeter")]
 [assembly: System.Reflection.AssemblyTitleAttribute("InfoPanel.AudioMeter")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
