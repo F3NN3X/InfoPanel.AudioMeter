@@ -1,10 +1,14 @@
 using InfoPanel.Plugins;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using IniParser;
+using IniParser.Model;
 
 namespace AudioLevelMeterPlugin
 {
@@ -124,6 +128,10 @@ namespace AudioLevelMeterPlugin
         private readonly Dictionary<string, IAudioMeterInformation> _audioMeters = new();
         private readonly Dictionary<string, float> _decayValues = new();
         private readonly List<PluginContainer> _containers = new();
+        
+        // Configuration management
+        private string _configFilePath = string.Empty;
+        private readonly Dictionary<string, string> _customDeviceNames = new();
         private bool _initializationFailed = false;
 
         public AudioLevelMeter() : base("audio-level-meter", "Audio Level Meter", "Real-time system audio output level monitoring for all devices")
@@ -132,14 +140,251 @@ namespace AudioLevelMeterPlugin
 
         public override TimeSpan UpdateInterval => TimeSpan.FromMilliseconds(50);
 
+        #region Configuration Management
+
+        /// <summary>
+        /// Creates a default INI file with discovered audio devices
+        /// </summary>
+        private void CreateDefaultIniFile(FileIniDataParser parser)
+        {
+            var config = new IniData();
+            config.Sections.AddSection("DeviceNames");
+
+            // Add discovered devices with their default names
+            foreach (var deviceEntry in _audioDevices)
+            {
+                try
+                {
+                    // Get the actual device ID (not the container ID)
+                    string actualDeviceId = GetDeviceId(deviceEntry.Value);
+                    string defaultName = GetDeviceFriendlyName(deviceEntry.Value);
+                    config["DeviceNames"][actualDeviceId] = defaultName;
+                    Console.WriteLine($"AudioLevelMeter: Added device to INI - {actualDeviceId} = '{defaultName}'");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"AudioLevelMeter: Error adding device to INI: {ex.Message}");
+                }
+            }
+
+            try
+            {
+                parser.WriteFile(_configFilePath, config);
+                Console.WriteLine($"AudioLevelMeter: Created default INI file at {_configFilePath}");
+                
+                // Write a header comment manually
+                string iniContent = File.ReadAllText(_configFilePath);
+                string headerComment = "; Audio Device Custom Names Configuration\n" +
+                                     "; Edit the device names below to customize how they appear in InfoPanel\n" +
+                                     "; Format: DeviceID = Custom Display Name\n\n";
+                File.WriteAllText(_configFilePath, headerComment + iniContent);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AudioLevelMeter: Error creating default INI file: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Loads device name configuration from INI file
+        /// </summary>
+        private void LoadConfigurationFromIni(IniData config)
+        {
+            _customDeviceNames.Clear();
+
+            if (config.Sections.ContainsSection("DeviceNames"))
+            {
+                foreach (var keyData in config["DeviceNames"])
+                {
+                    if (!string.IsNullOrWhiteSpace(keyData.Value))
+                    {
+                        _customDeviceNames[keyData.KeyName] = keyData.Value;
+                        Console.WriteLine($"AudioLevelMeter: Custom name loaded - {keyData.KeyName} = '{keyData.Value}'");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the INI file with any newly discovered devices
+        /// </summary>
+        private void UpdateIniWithNewDevices()
+        {
+            if (!File.Exists(_configFilePath))
+                return;
+
+            try
+            {
+                var parser = new FileIniDataParser();
+                var config = parser.ReadFile(_configFilePath);
+
+                bool hasNewDevices = false;
+
+                // Add any new devices that aren't in the INI yet
+                foreach (var deviceEntry in _audioDevices)
+                {
+                    try
+                    {
+                        // Get the actual device ID (not the container ID)
+                        string actualDeviceId = GetDeviceId(deviceEntry.Value);
+                        if (!config["DeviceNames"].ContainsKey(actualDeviceId))
+                        {
+                            string defaultName = GetDeviceFriendlyName(deviceEntry.Value);
+                            config["DeviceNames"][actualDeviceId] = defaultName;
+                            hasNewDevices = true;
+                            Console.WriteLine($"AudioLevelMeter: Added new device to INI - {actualDeviceId} = '{defaultName}'");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"AudioLevelMeter: Error checking device for INI update: {ex.Message}");
+                    }
+                }
+
+                // Save the updated INI file if we added new devices
+                if (hasNewDevices)
+                {
+                    parser.WriteFile(_configFilePath, config);
+                    Console.WriteLine("AudioLevelMeter: INI file updated with new devices");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AudioLevelMeter: Error updating INI file: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the custom display name for a device, falling back to default name
+        /// </summary>
+        private string GetCustomDeviceName(string deviceId, IMMDevice device)
+        {
+            if (_customDeviceNames.TryGetValue(deviceId, out string? customName) && !string.IsNullOrWhiteSpace(customName))
+            {
+                return customName;
+            }
+            return GetDeviceFriendlyName(device);
+        }
+
+        /// <summary>
+        /// Handles device configuration after device enumeration is complete
+        /// </summary>
+        private void HandleDeviceConfiguration()
+        {
+            var parser = new FileIniDataParser();
+            IniData config;
+            try
+            {
+                if (!File.Exists(_configFilePath))
+                {
+                    Console.WriteLine($"AudioLevelMeter: INI file not found at {_configFilePath}, creating default with {_audioDevices.Count} devices.");
+                    CreateDefaultIniFile(parser);
+                }
+                else
+                {
+                    Console.WriteLine($"AudioLevelMeter: Reading INI file from {_configFilePath}");
+                    config = parser.ReadFile(_configFilePath);
+                    LoadConfigurationFromIni(config);
+                    
+                    // Update INI with any newly discovered devices
+                    UpdateIniWithNewDevices();
+                    
+                    // Reload configuration in case we added new devices
+                    config = parser.ReadFile(_configFilePath);
+                    LoadConfigurationFromIni(config);
+                    
+                    // Update container names with custom names
+                    UpdateContainerNamesWithCustomNames();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AudioLevelMeter: Error reading INI file '{_configFilePath}': {ex.Message}");
+            }
+            
+            // If INI file was just created, still try to update containers (though they'll use default names)
+            UpdateContainerNamesWithCustomNames();
+        }
+
+        /// <summary>
+        /// Loads existing configuration if the INI file exists (before device enumeration)
+        /// </summary>
+        private void LoadExistingConfiguration()
+        {
+            try
+            {
+                if (File.Exists(_configFilePath))
+                {
+                    Console.WriteLine($"AudioLevelMeter: Loading existing configuration from {_configFilePath}");
+                    var parser = new FileIniDataParser();
+                    var config = parser.ReadFile(_configFilePath);
+                    LoadConfigurationFromIni(config);
+                }
+                else
+                {
+                    Console.WriteLine($"AudioLevelMeter: No existing configuration found at {_configFilePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AudioLevelMeter: Error loading existing configuration: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates already-created container names with custom names from configuration
+        /// </summary>
+        private void UpdateContainerNamesWithCustomNames()
+        {
+            try
+            {
+                foreach (var deviceEntry in _audioDevices)
+                {
+                    string containerId = deviceEntry.Key;
+                    IMMDevice device = deviceEntry.Value;
+                    
+                    // Get the actual device ID and check for custom name
+                    string actualDeviceId = GetDeviceId(device);
+                    string customName = GetCustomDeviceName(actualDeviceId, device);
+                    
+                    // Find the container for this device
+                    var container = _containers.FirstOrDefault(c => c.Id == containerId);
+                    if (container != null)
+                    {
+                        // Update the device name entry within the container
+                        var deviceNameEntry = container.Entries.OfType<PluginText>().FirstOrDefault(e => e.Id == "device-name");
+                        if (deviceNameEntry != null)
+                        {
+                            string oldName = deviceNameEntry.Value?.ToString() ?? "";
+                            deviceNameEntry.Value = customName;
+                            Console.WriteLine($"AudioLevelMeter: Updated device name in container '{containerId}' - '{oldName}' → '{customName}'");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AudioLevelMeter: Error updating container names: {ex.Message}");
+            }
+        }
+
+        #endregion
+
         public override void Initialize()
         {
             try
             {
                 Console.WriteLine("AudioLevelMeter initializing...");
                 
+                // Set up configuration file path
+                Assembly assembly = Assembly.GetExecutingAssembly();
+                _configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
+                
                 // Initialize Core Audio API immediately to enumerate all devices
                 InitializeCoreAudioAPI();
+                
+                // Load existing configuration BEFORE creating containers
+                LoadExistingConfiguration();
                 
                 // Create default container
                 PluginContainer defaultContainer = new("default-audio", "Audio Level Meter");
@@ -169,23 +414,30 @@ namespace AudioLevelMeterPlugin
                                     deviceCollection.Item(i, out device);
                                     
                                     string deviceId = GetDeviceId(device);
-                                    string deviceName;
+                                    string defaultDeviceName;
                                     try
                                     {
-                                        deviceName = GetDeviceFriendlyName(device);
+                                        defaultDeviceName = GetDeviceFriendlyName(device);
                                     }
                                     catch (Exception nameEx)
                                     {
                                         Console.WriteLine($"Failed to get device name for device {i}: {nameEx.Message}");
-                                        deviceName = $"Audio Device {i + 1}";
+                                        defaultDeviceName = $"Audio Device {i + 1}";
                                     }
                                     
-                                    Console.WriteLine($"Processing device {i}: {deviceName} (ID: {deviceId})");
+                                    // Get custom device name from configuration
+                                    string displayDeviceName = GetCustomDeviceName(deviceId, device);
+                                    
+                                    Console.WriteLine($"Processing device {i}: {defaultDeviceName} (ID: {deviceId})");
+                                    if (displayDeviceName != defaultDeviceName)
+                                    {
+                                        Console.WriteLine($"  Using custom name: '{displayDeviceName}'");
+                                    }
                                     
                                     // Create container for this device using device ID
                                     string containerId = $"audio-meter-{deviceId.Replace("{", "").Replace("}", "").Replace(".", "-")}";
-                                    PluginContainer deviceContainer = new(containerId, $"🎵 {deviceName}");
-                                    deviceContainer.Entries.Add(new PluginText("device-name", "Device", deviceName));
+                                    PluginContainer deviceContainer = new(containerId, $"🎵 {displayDeviceName}");
+                                    deviceContainer.Entries.Add(new PluginText("device-name", "Device", displayDeviceName));
                                     deviceContainer.Entries.Add(new PluginSensor("audio-level", "Audio Level", 0f, "%"));
                                     
                                     _containers.Add(deviceContainer);
@@ -194,7 +446,7 @@ namespace AudioLevelMeterPlugin
                                     // Cache the device with the container ID
                                     _audioDevices[containerId] = device;
                                     
-                                    Console.WriteLine($"✅ Pre-created container for: {deviceName}");
+                                    Console.WriteLine($"✅ Pre-created container for: {displayDeviceName}");
                                 }
                                 catch (Exception deviceEx)
                                 {
@@ -227,6 +479,9 @@ namespace AudioLevelMeterPlugin
                             
                             Marshal.ReleaseComObject(deviceCollection);
                             Console.WriteLine($"Successfully created {_containers.Count - 1} device containers"); // -1 for default
+                            
+                            // Now that devices are enumerated, handle INI file configuration
+                            HandleDeviceConfiguration();
                         }
                         else
                         {
@@ -476,7 +731,7 @@ namespace AudioLevelMeterPlugin
                     if (hr == S_OK)
                     {
                         string deviceId = GetDeviceId(defaultDevice);
-                        string deviceName = GetDeviceFriendlyName(defaultDevice);
+                        string displayDeviceName = GetCustomDeviceName(deviceId, defaultDevice);
                         
                         // Update default container with current default device info
                         var container = _containers.FirstOrDefault(c => c.Id == "default-audio");
@@ -487,7 +742,7 @@ namespace AudioLevelMeterPlugin
                             
                             if (deviceNameEntry != null)
                             {
-                                deviceNameEntry.Value = deviceName;
+                                deviceNameEntry.Value = displayDeviceName;
                             }
                             
                             // Get audio level for default device

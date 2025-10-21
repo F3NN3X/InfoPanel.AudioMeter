@@ -59,6 +59,10 @@
             "Serilog": {
               "target": "Package",
               "version": "[4.1.0, )"
+            },
+            "ini-parser": {
+              "target": "Package",
+              "version": "[2.5.2, )"
             }
           },
           "imports": [
