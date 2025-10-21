@@ -25,6 +25,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Security improvements for future versions
 
+## [1.1.0] - 2025-10-21
+
+### Added
+- **Device Name Customization** - Users can now customize audio device display names via INI configuration file
+- **Automatic INI File Management** - Plugin creates and maintains device configuration file automatically
+- **Custom Name Persistence** - Device name customizations persist across plugin restarts and InfoPanel sessions
+- **Enhanced Configuration Loading** - Improved initialization sequence to load custom names before container creation
+- **Dynamic Device Name Updates** - Real-time application of custom names from configuration file
+
+### Changed
+- **Improved VU Meter Scaling** - Enhanced scaling algorithm for more realistic music response (full volume music now consistently hits 95-100%)
+- **Enhanced Initialization Process** - Restructured plugin initialization to properly handle custom device names
+- **Better Error Handling** - Improved COM marshaling error recovery and device enumeration stability
+- **Optimized Container Creation** - Device containers now created with custom names from the start
+- **Enhanced Logging Output** - More detailed diagnostic messages for configuration loading and device processing
+
+### Fixed
+- **INI File Population Issue** - Fixed timing issue where INI file was created before devices were enumerated
+- **Custom Name Application** - Fixed issue where custom names weren't being applied to containers after restart
+- **Configuration Timing** - Resolved initialization order problems that prevented custom names from loading properly
+- **Container Name Updates** - Fixed device name entries not updating with custom names from configuration
+- **Memory Management** - Improved COM object disposal patterns for better stability
+
 ## [1.0.0] - 2025-10-21
 
 ### Added

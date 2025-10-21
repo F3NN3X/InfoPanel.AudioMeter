@@ -15,7 +15,7 @@
     <!-- Limit satellite resources to English only -->
     <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
     <!-- Define the plugin version -->
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <!-- Customize output path for Release builds -->
     <OutputPath Condition="'$(Configuration)' == 'Release'">bin\Release\net8.0-windows\InfoPanel.AudioMeter-v$(Version)\InfoPanel.AudioMeter</OutputPath>
     <!-- Prevent appending TargetFramework to OutputPath -->
@@ -118,6 +118,7 @@
 
   <ItemGroup>
     <PackageReference Include="Serilog" Version="4.1.0" />
+    <PackageReference Include="ini-parser" Version="2.5.2" />
   </ItemGroup>
 
   <ItemGroup>

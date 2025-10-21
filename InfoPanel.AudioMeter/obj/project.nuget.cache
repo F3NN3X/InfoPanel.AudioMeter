@@ -1,10 +1,24 @@
 {
   "version": 2,
-  "dgSpecHash": "3MpTQSeI/Q0=",
+  "dgSpecHash": "10gveeAAWnI=",
   "success": true,
   "projectFilePath": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\joransrb\\.nuget\\packages\\ini-parser\\2.5.2\\ini-parser.2.5.2.nupkg.sha512",
     "C:\\Users\\joransrb\\.nuget\\packages\\serilog\\4.1.0\\serilog.4.1.0.nupkg.sha512"
   ],
-  "logs": []
+  "logs": [
+    {
+      "code": "NU1701",
+      "level": "Warning",
+      "message": "Package 'ini-parser 2.5.2' was restored using '.NETFramework,Version=v4.6.1, .NETFramework,Version=v4.6.2, .NETFramework,Version=v4.7, .NETFramework,Version=v4.7.1, .NETFramework,Version=v4.7.2, .NETFramework,Version=v4.8, .NETFramework,Version=v4.8.1' instead of the project target framework 'net8.0-windows7.0'. This package may not be fully compatible with your project.",
+      "projectPath": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
+      "warningLevel": 1,
+      "filePath": "E:\\GitHub\\MyRepos\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter\\InfoPanel.AudioMeter.csproj",
+      "libraryId": "ini-parser",
+      "targetGraphs": [
+        "net8.0-windows7.0"
+      ]
+    }
+  ]
 }
