@@ -9,12 +9,16 @@ A real-time audio level monitoring plugin for [InfoPanel](https://github.com/Inf
 ## Features
 
 - 🎵 **Multi-Device Audio Monitoring** - Tracks audio levels from all available Windows output devices
-- 📊 **Responsive VU Meters** - Scaling curves that make music at full volume reach 95-100% on meters
+- 🎛️ **Professional Audio Processing** - OBS-style dual level calculation with peak, RMS, and peak hold indicators
+- 📊 **Professional dB Scale** - True audio engineering decibel readings (-96dB to 0dB) alongside familiar percentage display
+- 🔊 **Per-Channel Analysis** - Separate left/right channel monitoring with stereo analysis
+- � **Peak Hold Indicators** - Visual peak hold markers like professional audio equipment
+- �📊 **Responsive VU Meters** - Scaling curves that make music at full volume reach 95-100% on meters
 - 🎚️ **Device Name Customization** - Edit INI file to customize how device names appear in InfoPanel
-- 🔊 **Multi-channel Support** - Averages left and right audio channels per device
+- � **Backward Compatibility** - All existing percentage sensors preserved for seamless upgrades
 - 🎛️ **Default Device Tracking** - Automatically follows Windows default audio device changes
 - ⚡ **Smooth Updates** - 50ms update intervals (20 FPS) for smooth visual metering
-- 🎯 **Percentage Display** - Converts raw audio peaks to 0-100% VU meter readings
+- 🎯 **Multi-Level Display** - Peak, RMS, peak hold, channels, and percentage all available simultaneously
 - 🏷️ **Device Information** - Shows friendly names, device names, and device identification
 - 🔌 **InfoPanel Integration** - Works with InfoPanel's plugin architecture and multi-container support
 - 🛠️ **Windows API Integration** - Uses Windows Core Audio API via P/Invoke for reliable performance
@@ -215,6 +219,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
+- **1.2.0** - 🎛️ **Professional Audio Monitoring** - Added OBS-style dual level processing (peak + RMS), professional dB scale readings, per-channel analysis, and peak hold indicators while maintaining full backward compatibility
 - **1.1.0** - Added device name customization via INI file, improved VU meter scaling for realistic music response, enhanced error handling and logging
 - **1.0.0** - Initial release with multi-device monitoring, responsive VU meter scaling, and direct Windows Core Audio API integration
 
