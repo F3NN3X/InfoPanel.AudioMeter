@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Features removed in future versions
 
+## [1.2.2] - 2026-10-08
+
+### Fixed
+- **`audio-level` read far hotter than L/R**: the overall level was mapped
+  from the RMS dB value with a linear floor/ceiling scale (100% at −20 dB),
+  so quiet signals already read 70-90% while the per-channel VU meters
+  showed a few percent for the same signal. The overall level now uses the
+  same ultra-responsive VU scale as the channel meters (stereo peak →
+  `max(L, R)`), so the "Level" bar matches the left/right meters.
+
 ## [1.2.1] - 2025-11-07
 
 ### Added

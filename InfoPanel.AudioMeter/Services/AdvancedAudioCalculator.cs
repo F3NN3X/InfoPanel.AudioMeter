@@ -85,8 +85,13 @@ namespace AudioLevelMeterPlugin.Services
                 levels.LeftChannel = levels.RightChannel = ScaleToPercentage(channelPeaks[0]);
             }
             
-            // Backward compatibility percentage using RMS for smoother response
-            levels.PercentageLevel = DbToPercentage(levels.MagnitudeLevel);
+            // Overall level on the same ultra-responsive VU scale as the
+            // per-channel meters: scaling the stereo peak (max of L/R) with
+            // the channel curve keeps "Level" consistent with the channel
+            // values. The previous linear dB mapping (floor -96 dB, 100% at
+            // the -20 dB ceiling) read far hotter than the channels for the
+            // same signal.
+            levels.PercentageLevel = ScaleToPercentage(instantaneousPeak);
             
             // Apply decay to percentage level for existing behavior
             levels.PercentageLevel = Math.Max(levels.PercentageLevel, _currentDecayValue * _configuration.LevelDecayRate);
