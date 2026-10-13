@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Features removed in future versions
 
+## [1.3.1] - 2026-10-13
+
+### Fixed
+- **Spectrum read ~40 dB too quiet below full volume**: WASAPI loopback
+  delivers the stream after a software endpoint volume, while the peak meter
+  reads before it. At 6 % volume (-42.3 dB) music peaking at -6 dBFS arrived
+  at -48.6 dBFS and the bands sat near 20. The capture now reads the
+  endpoint volume every 250 ms and undoes it (skipped for hardware volume,
+  mute, or a slider at about zero), so the bands no longer follow the
+  volume slider. Output format and `[Spectrum]` keys are unchanged.
+- `TestConsole --selftest` covers the compensation; `--diagnose <device>` and
+  `--noise` print raw loopback levels and analyser bands for noise and tones.
+
 ## [1.3.0] - 2026-10-13
 
 ### Added

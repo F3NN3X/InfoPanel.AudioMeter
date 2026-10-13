@@ -19,6 +19,8 @@ namespace AudioLevelMeterPlugin.Services
         private const int DecayIntervalMs = 20;
         private const int RetryIntervalMs = 5000;
         private const int DefaultCheckIntervalMs = 1000;
+        private const int VolumeCheckIntervalMs = 250;
+        private const float MinVolumeScalar = 0.001f;
 
         private readonly SpectrumSettings _settings;
         private readonly List<CaptureTarget> _targets = new();
@@ -63,6 +65,17 @@ namespace AudioLevelMeterPlugin.Services
         public string GetSpectrum(string containerId)
         {
             return _targetsById.TryGetValue(containerId, out var target) ? target.Latest : string.Empty;
+        }
+
+        /// <summary>
+        /// Gain that undoes the endpoint volume. Loopback delivers the stream after a software endpoint
+        /// volume, so the bands would drop with the volume slider; hardware volume, mute and a slider at
+        /// about zero leave the samples as they are.
+        /// </summary>
+        public static float CompensationGain(float levelDb, float scalar, bool muted, bool hardwareVolume)
+        {
+            if (hardwareVolume || muted || scalar < MinVolumeScalar || levelDb >= 0f) return 1f;
+            return MathF.Pow(10f, -levelDb / 20f);
         }
 
         public void Dispose()
@@ -144,6 +157,9 @@ namespace AudioLevelMeterPlugin.Services
 
             private IAudioClient? _client;
             private IAudioCaptureClient? _capture;
+            private IAudioEndpointVolume? _volume;
+            private bool _hardwareVolume;
+            private float _gain = 1f;
             private SpectrumAnalyzer? _analyzer;
             private string? _activeDeviceId;
             private int _channels;
@@ -157,6 +173,7 @@ namespace AudioLevelMeterPlugin.Services
             private long _lastData;
             private long _lastDecay;
             private long _lastDefaultCheck;
+            private long _lastVolumeCheck;
 
             public volatile string Latest = string.Empty;
 
@@ -185,6 +202,12 @@ namespace AudioLevelMeterPlugin.Services
                         _nextRetry = 0;
                         return;
                     }
+                }
+
+                if (now - _lastVolumeCheck >= VolumeCheckIntervalMs)
+                {
+                    _lastVolumeCheck = now;
+                    ReadVolume();
                 }
 
                 bool gotData = false;
@@ -239,8 +262,11 @@ namespace AudioLevelMeterPlugin.Services
             {
                 try { _client?.Stop(); } catch { }
                 if (_capture != null) { try { Marshal.ReleaseComObject(_capture); } catch { } }
+                if (_volume != null) { try { Marshal.ReleaseComObject(_volume); } catch { } }
                 if (_client != null) { try { Marshal.ReleaseComObject(_client); } catch { } }
                 _capture = null;
+                _volume = null;
+                _gain = 1f;
                 _client = null;
                 _analyzer = null;
                 _activeDeviceId = null;
@@ -287,6 +313,18 @@ namespace AudioLevelMeterPlugin.Services
                     hr = _client.Start();
                     if (hr != CoreAudioConstants.S_OK) { Fail(now, $"Start 0x{hr:X8}"); return false; }
 
+                    // Without the endpoint volume the bands are left uncompensated rather than failing
+                    var iidVolume = CoreAudioConstants.IID_IAudioEndpointVolume;
+                    if (device.Activate(ref iidVolume, CoreAudioConstants.CLSCTX_ALL, IntPtr.Zero, out IntPtr pVolume) == CoreAudioConstants.S_OK)
+                    {
+                        _volume = (IAudioEndpointVolume)Marshal.GetObjectForIUnknown(pVolume);
+                        Marshal.Release(pVolume);
+                        _hardwareVolume = _volume.QueryHardwareSupport(out uint mask) == CoreAudioConstants.S_OK
+                            && (mask & CoreAudioConstants.ENDPOINT_HARDWARE_SUPPORT_VOLUME) != 0;
+                    }
+                    ReadVolume();
+                    _lastVolumeCheck = now;
+
                     _analyzer = new SpectrumAnalyzer(sampleRate, settings.Bands, settings.MinHz, settings.MaxHz, settings.FloorDb);
                     _lastData = now;
                     _lastDecay = now;
@@ -306,6 +344,20 @@ namespace AudioLevelMeterPlugin.Services
                     if (pFormat != IntPtr.Zero) CoTaskMemFree(pFormat);
                     if (device != null) Marshal.ReleaseComObject(device);
                 }
+            }
+
+            private void ReadVolume()
+            {
+                var volume = _volume;
+                if (volume == null) { _gain = 1f; return; }
+                if (volume.GetMasterVolumeLevel(out float levelDb) != CoreAudioConstants.S_OK
+                    || volume.GetMasterVolumeLevelScalar(out float scalar) != CoreAudioConstants.S_OK
+                    || volume.GetMute(out bool muted) != CoreAudioConstants.S_OK)
+                {
+                    _gain = 1f;
+                    return;
+                }
+                _gain = CompensationGain(levelDb, scalar, muted, _hardwareVolume);
             }
 
             private static string? ResolveDefaultId(IMMDeviceEnumerator enumerator)
@@ -365,7 +417,7 @@ namespace AudioLevelMeterPlugin.Services
 
                 byte* p = (byte*)data;
                 int ch = _channels;
-                float inv = 1f / ch;
+                float inv = _gain / ch;
 
                 for (int f = 0; f < frames; f++)
                 {

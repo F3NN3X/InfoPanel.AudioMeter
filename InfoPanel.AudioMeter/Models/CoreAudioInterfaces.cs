@@ -66,6 +66,33 @@ namespace AudioLevelMeterPlugin.Models
         int QueryHardwareSupport(out uint pdwHardwareSupportMask);
     }
 
+    /// <summary>
+    /// IAudioEndpointVolume; only the getters are called. The setters stay declared to keep the vtable order.
+    /// </summary>
+    [ComImport]
+    [Guid("5CDF2C82-841E-4546-9722-0CF74078229A")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IAudioEndpointVolume
+    {
+        [PreserveSig] int RegisterControlChangeNotify(IntPtr pNotify);
+        [PreserveSig] int UnregisterControlChangeNotify(IntPtr pNotify);
+        [PreserveSig] int GetChannelCount(out uint pnChannelCount);
+        [PreserveSig] int SetMasterVolumeLevel(float fLevelDB, ref Guid pguidEventContext);
+        [PreserveSig] int SetMasterVolumeLevelScalar(float fLevel, ref Guid pguidEventContext);
+        [PreserveSig] int GetMasterVolumeLevel(out float pfLevelDB);
+        [PreserveSig] int GetMasterVolumeLevelScalar(out float pfLevel);
+        [PreserveSig] int SetChannelVolumeLevel(uint nChannel, float fLevelDB, ref Guid pguidEventContext);
+        [PreserveSig] int SetChannelVolumeLevelScalar(uint nChannel, float fLevel, ref Guid pguidEventContext);
+        [PreserveSig] int GetChannelVolumeLevel(uint nChannel, out float pfLevelDB);
+        [PreserveSig] int GetChannelVolumeLevelScalar(uint nChannel, out float pfLevel);
+        [PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, ref Guid pguidEventContext);
+        [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool pbMute);
+        [PreserveSig] int GetVolumeStepInfo(out uint pnStep, out uint pnStepCount);
+        [PreserveSig] int VolumeStepUp(ref Guid pguidEventContext);
+        [PreserveSig] int VolumeStepDown(ref Guid pguidEventContext);
+        [PreserveSig] int QueryHardwareSupport(out uint pdwHardwareSupportMask);
+    }
+
     [ComImport]
     [Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -207,6 +234,10 @@ namespace AudioLevelMeterPlugin.Models
         public const ushort WAVE_FORMAT_EXTENSIBLE = 0xFFFE;
         public static readonly Guid IID_IAudioClient = new Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2");
         public static readonly Guid IID_IAudioCaptureClient = new Guid("C8ADBD64-E71E-48A0-A4DE-185C395CD317");
+
+        // IAudioEndpointVolume
+        public const uint ENDPOINT_HARDWARE_SUPPORT_VOLUME = 0x1;
+        public static readonly Guid IID_IAudioEndpointVolume = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
         
         // CLSID for MMDeviceEnumerator
         public static readonly Guid MMDeviceEnumeratorCLSID = new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E");
