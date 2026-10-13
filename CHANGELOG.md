@@ -19,6 +19,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Features removed in future versions
 
+## [1.3.0] - 2026-10-13
+
+### Added
+- **`spectrum` entry** in every container (the default container and each device):
+  the audio actually playing on the device, split into log-spaced frequency
+  bands, as comma-separated integers 0..100 (lowest band first, no spaces,
+  e.g. `0,12,40,...`). All zeros when silent; empty when the spectrum is
+  disabled or the device failed. Read by the dashboard as
+  `plugins.audio-level-meter.<container>.spectrum`.
+- WASAPI loopback capture on one background thread (`LoopbackCaptureService`)
+  and a 2048-point Hann FFT analyser (`SpectrumAnalyzer`). The default
+  container follows the default render device; a device that fails is logged
+  once and retried every 5 s. No new dependency.
+- `[Spectrum]` ini section: `Enabled`, `Bands` (8..64), `MinHz`, `MaxHz`,
+  `FloorDb`, written when the ini is first created.
+- `TestConsole --selftest` (synthetic tones, no audio device) and
+  `TestConsole --live` (1 kHz tone through the default output).
+
+### Changed
+- Every existing entry, id, name and unit is unchanged.
+
 ## [1.2.2] - 2026-10-08
 
 ### Fixed

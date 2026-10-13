@@ -4,8 +4,13 @@ using AudioLevelMeterPlugin;
 
 class Program
 {
-    static void Main()
+    static void Main(string[] args)
     {
+        if (args.Length > 0)
+        {
+            Environment.Exit(Verification.Run(args));
+        }
+
         Console.WriteLine("Testing Audio Level Meter Plugin with Windows Core Audio API...");
         
         try

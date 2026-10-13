@@ -67,6 +67,87 @@ namespace AudioLevelMeterPlugin.Models
     }
 
     [ComImport]
+    [Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IAudioClient
+    {
+        [PreserveSig]
+        int Initialize(int shareMode, uint streamFlags, long hnsBufferDuration, long hnsPeriodicity, IntPtr pFormat, IntPtr audioSessionGuid);
+
+        [PreserveSig]
+        int GetBufferSize(out uint pNumBufferFrames);
+
+        [PreserveSig]
+        int GetStreamLatency(out long phnsLatency);
+
+        [PreserveSig]
+        int GetCurrentPadding(out uint pNumPaddingFrames);
+
+        [PreserveSig]
+        int IsFormatSupported(int shareMode, IntPtr pFormat, out IntPtr ppClosestMatch);
+
+        [PreserveSig]
+        int GetMixFormat(out IntPtr ppDeviceFormat);
+
+        [PreserveSig]
+        int GetDevicePeriod(out long phnsDefaultDevicePeriod, out long phnsMinimumDevicePeriod);
+
+        [PreserveSig]
+        int Start();
+
+        [PreserveSig]
+        int Stop();
+
+        [PreserveSig]
+        int Reset();
+
+        [PreserveSig]
+        int SetEventHandle(IntPtr eventHandle);
+
+        [PreserveSig]
+        int GetService(ref Guid riid, out IntPtr ppv);
+    }
+
+    [ComImport]
+    [Guid("C8ADBD64-E71E-48A0-A4DE-185C395CD317")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IAudioCaptureClient
+    {
+        [PreserveSig]
+        int GetBuffer(out IntPtr ppData, out uint pNumFramesToRead, out uint pdwFlags, out ulong pu64DevicePosition, out ulong pu64QPCPosition);
+
+        [PreserveSig]
+        int ReleaseBuffer(uint numFramesRead);
+
+        [PreserveSig]
+        int GetNextPacketSize(out uint pNumFramesInNextPacket);
+    }
+
+    /// <summary>
+    /// WAVEFORMATEX; for WAVE_FORMAT_EXTENSIBLE the extra fields follow it in memory.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 2)]
+    internal struct WAVEFORMATEX
+    {
+        public ushort wFormatTag;
+        public ushort nChannels;
+        public uint nSamplesPerSec;
+        public uint nAvgBytesPerSec;
+        public ushort nBlockAlign;
+        public ushort wBitsPerSample;
+        public ushort cbSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 2)]
+    internal struct WAVEFORMATEXTENSIBLE
+    {
+        public WAVEFORMATEX Format;
+        public ushort wValidBitsPerSample;
+        public uint dwChannelMask;
+        public Guid SubFormat;
+    }
+
+    [ComImport]
     [Guid("7991EEC9-7E89-4D85-8390-6C703CEC60C0")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     internal interface IMMNotificationClient
@@ -115,6 +196,17 @@ namespace AudioLevelMeterPlugin.Models
     {
         public const uint CLSCTX_INPROC_SERVER = 0x1;
         public const int S_OK = 0;
+        public const uint CLSCTX_ALL = 0x17;
+
+        // IAudioClient
+        public const int AUDCLNT_SHAREMODE_SHARED = 0;
+        public const uint AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000;
+        public const uint AUDCLNT_BUFFERFLAGS_SILENT = 0x2;
+        public const ushort WAVE_FORMAT_PCM = 1;
+        public const ushort WAVE_FORMAT_IEEE_FLOAT = 3;
+        public const ushort WAVE_FORMAT_EXTENSIBLE = 0xFFFE;
+        public static readonly Guid IID_IAudioClient = new Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2");
+        public static readonly Guid IID_IAudioCaptureClient = new Guid("C8ADBD64-E71E-48A0-A4DE-185C395CD317");
         
         // CLSID for MMDeviceEnumerator
         public static readonly Guid MMDeviceEnumeratorCLSID = new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E");

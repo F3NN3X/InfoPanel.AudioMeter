@@ -62,5 +62,22 @@ namespace AudioLevelMeterPlugin.Models
         /// dB level that maps to 100% for percentage scaling
         /// </summary>
         public float AudioCeilingDb { get; set; } = -20f;
+
+        /// <summary>
+        /// Spectrum band settings (the [Spectrum] section of the ini)
+        /// </summary>
+        public SpectrumSettings Spectrum { get; } = new SpectrumSettings();
+    }
+
+    /// <summary>
+    /// Settings for the loopback spectrum bands
+    /// </summary>
+    public class SpectrumSettings
+    {
+        public bool Enabled { get; set; } = true;
+        public int Bands { get; set; } = 32;
+        public float MinHz { get; set; } = 30f;
+        public float MaxHz { get; set; } = 16000f;
+        public float FloorDb { get; set; } = -80f;
     }
 }

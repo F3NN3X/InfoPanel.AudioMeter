@@ -14,6 +14,7 @@ A real-time audio level monitoring plugin for [InfoPanel](https://github.com/Inf
 - 🔊 **Per-Channel Analysis** - Separate left/right channel monitoring with stereo analysis
 - � **Peak Hold Indicators** - Visual peak hold markers like professional audio equipment
 - �📊 **Responsive VU Meters** - Scaling curves that make music at full volume reach 95-100% on meters
+- 🌈 **Spectrum Bands** - Real frequency bands of what each device is playing (WASAPI loopback + FFT), exposed as the `spectrum` entry
 - 🎚️ **Device Name Customization** - Edit INI file to customize how device names appear in InfoPanel
 - � **Backward Compatibility** - All existing percentage sensors preserved for seamless upgrades
 - 🎛️ **Default Device Tracking** - Automatically follows Windows default audio device changes
@@ -64,6 +65,23 @@ The plugin features responsive scaling curves designed for realistic music monit
 - **Full Volume Music**: Music at 100% system volume consistently hits 95-100% on the VU meters  
 - **Scaling Algorithm**: Multi-tier algorithm that provides realistic VU meter response
 - **Dynamic Range**: Quiet sounds (0.01-0.05 raw) scale to 3-21%, moderate sounds (0.05-0.15 raw) scale to 21-60%
+
+### Spectrum
+
+Every container has a `spectrum` text entry with the live frequency bands of the audio playing on that device: comma-separated integers 0..100, lowest band first, no spaces (for example `0,12,40,...`), exactly `Bands` values. It is all zeros when nothing plays and an empty string when the spectrum is disabled or the device failed (a failed device is retried every 5 seconds). In a dashboard it is `plugins.audio-level-meter.<container>.spectrum`.
+
+Bands are log-spaced between `MinHz` and `MaxHz` and use the device's real sample rate; 0 is `FloorDb` or quieter and 100 is full scale. Configure it in the `[Spectrum]` section of the ini (defaults shown):
+
+```ini
+[Spectrum]
+Enabled = true
+Bands = 32
+MinHz = 30
+MaxHz = 16000
+FloorDb = -80
+```
+
+`Bands` is clamped to 8..64. Restart InfoPanel to apply changes.
 
 ### Device Name Customization
 
@@ -219,6 +237,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
+- **1.3.0** - 🌈 **Spectrum** - New `spectrum` entry with real frequency bands from WASAPI loopback capture, and a `[Spectrum]` ini section
 - **1.2.0** - 🎛️ **Professional Audio Monitoring** - Added OBS-style dual level processing (peak + RMS), professional dB scale readings, per-channel analysis, and peak hold indicators while maintaining full backward compatibility
 - **1.1.0** - Added device name customization via INI file, improved VU meter scaling for realistic music response, enhanced error handling and logging
 - **1.0.0** - Initial release with multi-device monitoring, responsive VU meter scaling, and direct Windows Core Audio API integration

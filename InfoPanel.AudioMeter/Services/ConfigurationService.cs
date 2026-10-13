@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using AudioLevelMeterPlugin.Models;
@@ -15,10 +16,12 @@ namespace AudioLevelMeterPlugin.Services
     {
         private readonly string _configFilePath;
         private readonly Dictionary<string, string> _customDeviceNames = new();
+        private readonly SpectrumSettings _spectrum;
 
-        public ConfigurationService(string configFilePath)
+        public ConfigurationService(string configFilePath, SpectrumSettings? spectrum = null)
         {
             _configFilePath = configFilePath;
+            _spectrum = spectrum ?? new SpectrumSettings();
         }
 
         /// <summary>
@@ -58,6 +61,12 @@ namespace AudioLevelMeterPlugin.Services
             {
                 var parser = new FileIniDataParser();
                 var config = new IniData();
+                config.Sections.AddSection("Spectrum");
+                config["Spectrum"]["Enabled"] = _spectrum.Enabled.ToString().ToLowerInvariant();
+                config["Spectrum"]["Bands"] = _spectrum.Bands.ToString(CultureInfo.InvariantCulture);
+                config["Spectrum"]["MinHz"] = _spectrum.MinHz.ToString(CultureInfo.InvariantCulture);
+                config["Spectrum"]["MaxHz"] = _spectrum.MaxHz.ToString(CultureInfo.InvariantCulture);
+                config["Spectrum"]["FloorDb"] = _spectrum.FloorDb.ToString(CultureInfo.InvariantCulture);
                 config.Sections.AddSection("DeviceNames");
 
                 // Add discovered devices with their default names
@@ -204,11 +213,48 @@ namespace AudioLevelMeterPlugin.Services
         }
 
         /// <summary>
+        /// Load the [Spectrum] section; missing or invalid keys keep their defaults
+        /// </summary>
+        private void LoadSpectrumFromIni(IniData config)
+        {
+            var defaults = new SpectrumSettings();
+            _spectrum.Enabled = defaults.Enabled;
+            _spectrum.Bands = defaults.Bands;
+            _spectrum.MinHz = defaults.MinHz;
+            _spectrum.MaxHz = defaults.MaxHz;
+            _spectrum.FloorDb = defaults.FloorDb;
+
+            if (!config.Sections.ContainsSection("Spectrum")) return;
+            var section = config["Spectrum"];
+
+            if (bool.TryParse(section["Enabled"], out bool enabled)) _spectrum.Enabled = enabled;
+            if (int.TryParse(section["Bands"], NumberStyles.Integer, CultureInfo.InvariantCulture, out int bands))
+                _spectrum.Bands = Math.Clamp(bands, 8, 64);
+            if (TryParseFloat(section["MinHz"], out float minHz) && minHz > 0f) _spectrum.MinHz = minHz;
+            if (TryParseFloat(section["MaxHz"], out float maxHz) && maxHz > 0f) _spectrum.MaxHz = maxHz;
+            if (TryParseFloat(section["FloorDb"], out float floorDb) && floorDb < 0f) _spectrum.FloorDb = floorDb;
+
+            if (_spectrum.MinHz >= _spectrum.MaxHz)
+            {
+                _spectrum.MinHz = defaults.MinHz;
+                _spectrum.MaxHz = defaults.MaxHz;
+            }
+
+            Console.WriteLine($"ConfigurationService: Spectrum enabled={_spectrum.Enabled} bands={_spectrum.Bands} {_spectrum.MinHz}-{_spectrum.MaxHz}Hz floor={_spectrum.FloorDb}dB");
+        }
+
+        private static bool TryParseFloat(string? value, out float result)
+        {
+            return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+        }
+
+        /// <summary>
         /// Load device name configuration from INI data
         /// </summary>
         private void LoadConfigurationFromIni(IniData config)
         {
             _customDeviceNames.Clear();
+            LoadSpectrumFromIni(config);
 
             if (config.Sections.ContainsSection("DeviceNames"))
             {

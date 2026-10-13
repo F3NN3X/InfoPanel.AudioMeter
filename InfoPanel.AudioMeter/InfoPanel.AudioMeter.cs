@@ -22,6 +22,7 @@ namespace AudioLevelMeterPlugin
         private CoreAudioService? _coreAudioService;
         private ConfigurationService? _configurationService;
         private ContainerService? _containerService;
+        private LoopbackCaptureService? _loopbackService;
         
         // State
         private List<AudioDeviceInfo> _audioDevices = new();
@@ -50,7 +51,7 @@ namespace AudioLevelMeterPlugin
                 // Set up configuration service
                 Assembly assembly = Assembly.GetExecutingAssembly();
                 string configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
-                _configurationService = new ConfigurationService(configFilePath);
+                _configurationService = new ConfigurationService(configFilePath, _configuration.Spectrum);
                 _configurationService.LoadConfiguration();
 
                 // Initialize container service
@@ -71,6 +72,9 @@ namespace AudioLevelMeterPlugin
                 // Handle device configuration
                 _configurationService.HandleDeviceConfiguration(_audioDevices);
                 _containerService.UpdateContainerNamesWithCustomNames(_audioDevices);
+
+                // Start spectrum capture (never fatal for the level meters)
+                StartSpectrumCapture();
 
                 Console.WriteLine($"AudioLevelMeter initialization complete - created {_containerService.GetAllContainers().Count} containers");
             }
@@ -112,6 +116,9 @@ namespace AudioLevelMeterPlugin
 
                     // Update all device audio levels
                     UpdateAllDeviceLevels();
+
+                    // Publish the latest spectrum bands (computed on the capture thread)
+                    UpdateSpectra();
                 }
                 catch (Exception ex)
                 {
@@ -132,6 +139,8 @@ namespace AudioLevelMeterPlugin
             {
                 Console.WriteLine("AudioLevelMeter closing...");
                 
+                _loopbackService?.Dispose();
+                _loopbackService = null;
                 _coreAudioService?.Dispose();
                 _decayValues.Clear();
                 _audioCalculators.Clear();
@@ -186,6 +195,43 @@ namespace AudioLevelMeterPlugin
                         Console.WriteLine($"⚠️ Failed to create fallback container {i}: {fallbackEx.Message}");
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Start loopback capture for every device container and the default device
+        /// </summary>
+        private void StartSpectrumCapture()
+        {
+            try
+            {
+                if (!_configuration.Spectrum.Enabled) return;
+
+                _loopbackService = new LoopbackCaptureService(_configuration.Spectrum);
+                _loopbackService.AddTarget("default-audio", null);
+                foreach (var device in _audioDevices)
+                {
+                    _loopbackService.AddTarget(device.ContainerId, device.DeviceId);
+                }
+                _loopbackService.Start();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Spectrum capture start error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Copy the latest spectrum string into every container's spectrum entry
+        /// </summary>
+        private void UpdateSpectra()
+        {
+            if (_containerService == null) return;
+
+            foreach (var container in _containerService.GetAllContainers())
+            {
+                string spectrum = _loopbackService?.GetSpectrum(container.Id) ?? string.Empty;
+                _containerService.UpdateContainerSpectrum(container, spectrum);
             }
         }
 

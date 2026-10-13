@@ -107,6 +107,25 @@ namespace AudioLevelMeterPlugin.Services
         }
 
         /// <summary>
+        /// Set the spectrum bands string of a container
+        /// </summary>
+        public void UpdateContainerSpectrum(PluginContainer container, string spectrum)
+        {
+            try
+            {
+                var spectrumEntry = container.Entries.OfType<PluginText>().FirstOrDefault(e => e.Id == "spectrum");
+                if (spectrumEntry != null && spectrumEntry.Value != spectrum)
+                {
+                    spectrumEntry.Value = spectrum;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ContainerService: Error updating container spectrum: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Update the device name in a container
         /// </summary>
         public void UpdateContainerDeviceName(PluginContainer container, string deviceName)
@@ -195,6 +214,9 @@ namespace AudioLevelMeterPlugin.Services
             
             // Backward compatibility
             container.Entries.Add(new PluginSensor("audio-level", "Level", 0f, "%"));
+
+            // Spectrum bands as comma-separated 0..100 integers, lowest band first (empty when unavailable)
+            container.Entries.Add(new PluginText("spectrum", "Spectrum", ""));
         }
     }
 }
