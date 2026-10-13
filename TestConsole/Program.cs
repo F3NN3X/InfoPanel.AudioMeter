@@ -6,6 +6,11 @@ class Program
 {
     static void Main(string[] args)
     {
+        if (args.Length > 0 && (args[0] == "--diagnose" || args[0] == "--noise"))
+        {
+            Environment.Exit(Diagnose.Run(args));
+        }
+
         if (args.Length > 0)
         {
             Environment.Exit(Verification.Run(args));
