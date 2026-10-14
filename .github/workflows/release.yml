@@ -45,16 +45,21 @@ jobs:
     - name: Check tag matches version
       if: startsWith(github.ref, 'refs/tags/')
       shell: pwsh
+      env:
+        REF_NAME: ${{ github.ref_name }}
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
       run: |
-        if ("${{ github.ref_name }}" -ne "v${{ steps.get_version.outputs.VERSION }}") {
-            Write-Error "Tag ${{ github.ref_name }} does not match csproj version ${{ steps.get_version.outputs.VERSION }}"
+        if ($env:REF_NAME -ne "v$env:VERSION") {
+            Write-Error "Tag $env:REF_NAME does not match csproj version $env:VERSION"
             exit 1
         }
 
     - name: Package Plugin
       shell: pwsh
+      env:
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
       run: |
-        $version = "${{ steps.get_version.outputs.VERSION }}"
+        $version = $env:VERSION
         $sourcePath = "InfoPanel.AudioMeter\bin\Release\net8.0-windows\InfoPanel.AudioMeter-v$version\InfoPanel.AudioMeter"
         $zipName = "InfoPanel.AudioMeter-v$version.zip"
         if (Test-Path $sourcePath) {
@@ -78,8 +83,10 @@ jobs:
     - name: Extract Release Notes
       id: extract_release_notes
       shell: pwsh
+      env:
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
       run: |
-        $version = "${{ steps.get_version.outputs.VERSION }}"
+        $version = $env:VERSION
         $changelog = Get-Content "CHANGELOG.md"
         $recording = $false
         $notes = @()
