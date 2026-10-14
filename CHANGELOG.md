@@ -19,6 +19,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Features removed in future versions
 
+## [1.4.0] - 2026-10-14
+
+### Changed
+- **Levels sat at 90-99% for any normal music**: `audio-level`, `left-channel`
+  and `right-channel` used a curve that reached 90% at -12 dBFS and 99% from
+  -8 dBFS. They are now linear in dB from `FloorDb` (0%, default -60 dB) to
+  0 dBFS (100%), so -6 dBFS reads 90% and -12 dBFS 80%. The new `[Meter]`
+  ini section sets the floor, and `Scale = legacy` restores the old curve.
+  Existing ini files get the section with its defaults.
+- **Left and right were always identical**: the meter read one peak and copied
+  it to both channels. Channel peaks now come from `GetChannelsPeakValues`
+  (declared as an `LPArray`: the default SAFEARRAY marshaling is what crashed
+  before), with the overall peak as a fallback.
+- **`rms-level` was always equal to `peak-level`**: it was the RMS of two equal
+  channel peaks. It is now the RMS of the channel peaks over the last 300 ms
+  (`CalculatorHistoryMs`), a short loudness average that moves slower than the
+  peak.
+- Less work per update: no per-tick log lines or array allocations for peaks,
+  a ring buffer for the calculator history, entries looked up once per
+  container, no copy of the meter dictionary, and the spectrum string is only
+  rebuilt when a band changes. The update interval and entry ids are unchanged.
+
+### Fixed
+- **Host process grew ~2.6 MB/min while the plugin ran**: the default
+  device's `IAudioMeterInformation` was re-activated every update (20 Hz) and
+  the raw interface pointer from `Activate` was never released, leaking one
+  native object per tick. Every `Activate`/`GetService` pointer is now released
+  right after it is wrapped (also on exception paths), PROPVARIANTs are cleared
+  on every path, and the managed PROPVARIANT is now as large as the native one.
+- The default device's meter and name are cached and re-resolved only when the
+  default endpoint changes (checked once a second) or the meter becomes
+  invalid (device removed), instead of on every update.
+- Re-enumerating devices releases the replaced or removed `IMMDevice` and its
+  meter instead of dropping the reference.
+- `Close` waits for an in-flight update before releasing COM objects.
+
 ## [1.3.1] - 2026-10-13
 
 ### Fixed

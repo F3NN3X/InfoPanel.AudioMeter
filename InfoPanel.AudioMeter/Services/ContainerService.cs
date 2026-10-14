@@ -12,6 +12,7 @@ namespace AudioLevelMeterPlugin.Services
     public class ContainerService
     {
         private readonly List<PluginContainer> _containers = new();
+        private readonly Dictionary<PluginContainer, ContainerEntries> _entries = new();
         private readonly AudioMeterConfiguration _configuration;
 
         public ContainerService(AudioMeterConfiguration? configuration = null)
@@ -73,32 +74,20 @@ namespace AudioLevelMeterPlugin.Services
         {
             try
             {
-                // Debug logging
-                if (levels.PercentageLevel > 0f || levels.PeakLevel > -90f)
-                {
-                    Console.WriteLine($"ContainerService: Updating {container.Id} - Peak: {levels.PeakLevel:F1}dB, RMS: {levels.MagnitudeLevel:F1}dB, Percentage: {levels.PercentageLevel:F1}%, Left: {levels.LeftChannel:F1}%, Right: {levels.RightChannel:F1}%");
-                }
-                
+                if (!_entries.TryGetValue(container, out var entries))
+                    return;
+
                 // Update professional metrics
-                var peakSensor = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "peak-level");
-                if (peakSensor != null) peakSensor.Value = (float)Math.Round(levels.PeakLevel, 1);
-                
-                var rmsSensor = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "rms-level");
-                if (rmsSensor != null) rmsSensor.Value = (float)Math.Round(levels.MagnitudeLevel, 1);
-                
-                var peakHoldSensor = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "peak-hold");
-                if (peakHoldSensor != null) peakHoldSensor.Value = (float)Math.Round(levels.PeakHold, 1);
+                if (entries.Peak != null) entries.Peak.Value = (float)Math.Round(levels.PeakLevel, 1);
+                if (entries.Rms != null) entries.Rms.Value = (float)Math.Round(levels.MagnitudeLevel, 1);
+                if (entries.PeakHold != null) entries.PeakHold.Value = (float)Math.Round(levels.PeakHold, 1);
                 
                 // Update per-channel levels
-                var leftSensor = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "left-channel");
-                if (leftSensor != null) leftSensor.Value = (float)Math.Round(levels.LeftChannel, 1);
-                
-                var rightSensor = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "right-channel");
-                if (rightSensor != null) rightSensor.Value = (float)Math.Round(levels.RightChannel, 1);
+                if (entries.Left != null) entries.Left.Value = (float)Math.Round(levels.LeftChannel, 1);
+                if (entries.Right != null) entries.Right.Value = (float)Math.Round(levels.RightChannel, 1);
                 
                 // Update backward compatibility sensor
-                var audioLevelSensor = container.Entries.OfType<PluginSensor>().FirstOrDefault(e => e.Id == "audio-level");
-                if (audioLevelSensor != null) audioLevelSensor.Value = (float)Math.Round(levels.PercentageLevel, 1);
+                if (entries.Level != null) entries.Level.Value = (float)Math.Round(levels.PercentageLevel, 1);
             }
             catch (Exception ex)
             {
@@ -113,7 +102,7 @@ namespace AudioLevelMeterPlugin.Services
         {
             try
             {
-                var spectrumEntry = container.Entries.OfType<PluginText>().FirstOrDefault(e => e.Id == "spectrum");
+                var spectrumEntry = _entries.TryGetValue(container, out var entries) ? entries.Spectrum : null;
                 if (spectrumEntry != null && spectrumEntry.Value != spectrum)
                 {
                     spectrumEntry.Value = spectrum;
@@ -132,13 +121,13 @@ namespace AudioLevelMeterPlugin.Services
         {
             try
             {
-                var deviceNameEntry = container.Entries.OfType<PluginText>().FirstOrDefault(e => e.Id == "device-name");
+                var deviceNameEntry = _entries.TryGetValue(container, out var entries) ? entries.DeviceName : null;
                 if (deviceNameEntry != null)
                 {
                     string oldName = deviceNameEntry.Value?.ToString() ?? "";
-                    deviceNameEntry.Value = deviceName;
                     if (oldName != deviceName)
                     {
+                        deviceNameEntry.Value = deviceName;
                         Console.WriteLine($"ContainerService: Updated device name in container '{container.Id}' - '{oldName}' → '{deviceName}'");
                     }
                 }
@@ -176,7 +165,11 @@ namespace AudioLevelMeterPlugin.Services
         /// </summary>
         public PluginContainer? FindContainer(string containerId)
         {
-            return _containers.FirstOrDefault(c => c.Id == containerId);
+            for (int i = 0; i < _containers.Count; i++)
+            {
+                if (_containers[i].Id == containerId) return _containers[i];
+            }
+            return null;
         }
 
         /// <summary>
@@ -193,6 +186,7 @@ namespace AudioLevelMeterPlugin.Services
         public void ClearContainers()
         {
             _containers.Clear();
+            _entries.Clear();
         }
 
         /// <summary>
@@ -201,22 +195,39 @@ namespace AudioLevelMeterPlugin.Services
         private void AddAudioSensors(PluginContainer container, string deviceName)
         {
             // Device information
-            container.Entries.Add(new PluginText("device-name", "Device", deviceName));
+            var deviceNameEntry = new PluginText("device-name", "Device", deviceName);
+            container.Entries.Add(deviceNameEntry);
             
             // Advanced audio metrics (professional)
-            container.Entries.Add(new PluginSensor("peak-level", "Peak", _configuration.AudioFloorDb, "dB"));
-            container.Entries.Add(new PluginSensor("rms-level", "RMS", _configuration.AudioFloorDb, "dB"));
-            container.Entries.Add(new PluginSensor("peak-hold", "Peak Hold", _configuration.AudioFloorDb, "dB"));
+            var peakSensor = new PluginSensor("peak-level", "Peak", _configuration.AudioFloorDb, "dB");
+            container.Entries.Add(peakSensor);
+            var rmsSensor = new PluginSensor("rms-level", "RMS", _configuration.AudioFloorDb, "dB");
+            container.Entries.Add(rmsSensor);
+            var peakHoldSensor = new PluginSensor("peak-hold", "Peak Hold", _configuration.AudioFloorDb, "dB");
+            container.Entries.Add(peakHoldSensor);
             
             // Per-channel levels
-            container.Entries.Add(new PluginSensor("left-channel", "Left", 0f, "%"));
-            container.Entries.Add(new PluginSensor("right-channel", "Right", 0f, "%"));
+            var leftSensor = new PluginSensor("left-channel", "Left", 0f, "%");
+            container.Entries.Add(leftSensor);
+            var rightSensor = new PluginSensor("right-channel", "Right", 0f, "%");
+            container.Entries.Add(rightSensor);
             
             // Backward compatibility
-            container.Entries.Add(new PluginSensor("audio-level", "Level", 0f, "%"));
+            var levelSensor = new PluginSensor("audio-level", "Level", 0f, "%");
+            container.Entries.Add(levelSensor);
 
             // Spectrum bands as comma-separated 0..100 integers, lowest band first (empty when unavailable)
-            container.Entries.Add(new PluginText("spectrum", "Spectrum", ""));
+            var spectrumEntry = new PluginText("spectrum", "Spectrum", "");
+            container.Entries.Add(spectrumEntry);
+
+            _entries[container] = new ContainerEntries(deviceNameEntry, peakSensor, rmsSensor, peakHoldSensor, leftSensor, rightSensor, levelSensor, spectrumEntry);
         }
+
+        /// <summary>
+        /// Entries of a container, looked up once at creation instead of by id on every update
+        /// </summary>
+        private sealed record ContainerEntries(
+            PluginText DeviceName, PluginSensor Peak, PluginSensor Rms, PluginSensor PeakHold,
+            PluginSensor Left, PluginSensor Right, PluginSensor Level, PluginText Spectrum);
     }
 }

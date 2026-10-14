@@ -17,11 +17,13 @@ namespace AudioLevelMeterPlugin.Services
         private readonly string _configFilePath;
         private readonly Dictionary<string, string> _customDeviceNames = new();
         private readonly SpectrumSettings _spectrum;
+        private readonly MeterSettings _meter;
 
-        public ConfigurationService(string configFilePath, SpectrumSettings? spectrum = null)
+        public ConfigurationService(string configFilePath, SpectrumSettings? spectrum = null, MeterSettings? meter = null)
         {
             _configFilePath = configFilePath;
             _spectrum = spectrum ?? new SpectrumSettings();
+            _meter = meter ?? new MeterSettings();
         }
 
         /// <summary>
@@ -67,6 +69,7 @@ namespace AudioLevelMeterPlugin.Services
                 config["Spectrum"]["MinHz"] = _spectrum.MinHz.ToString(CultureInfo.InvariantCulture);
                 config["Spectrum"]["MaxHz"] = _spectrum.MaxHz.ToString(CultureInfo.InvariantCulture);
                 config["Spectrum"]["FloorDb"] = _spectrum.FloorDb.ToString(CultureInfo.InvariantCulture);
+                WriteMeterDefaults(config);
                 config.Sections.AddSection("DeviceNames");
 
                 // Add discovered devices with their default names
@@ -112,7 +115,14 @@ namespace AudioLevelMeterPlugin.Services
                 var parser = new FileIniDataParser();
                 var config = parser.ReadFile(_configFilePath);
 
-                bool hasNewDevices = false;
+                bool changed = false;
+
+                // Ini files from before 1.4.0 get the [Meter] section, so the scale can be found and changed
+                if (!config.Sections.ContainsSection("Meter"))
+                {
+                    WriteMeterDefaults(config);
+                    changed = true;
+                }
 
                 // Add any new devices that aren't in the INI yet
                 foreach (var device in devices)
@@ -122,7 +132,7 @@ namespace AudioLevelMeterPlugin.Services
                         if (!config["DeviceNames"].ContainsKey(device.DeviceId))
                         {
                             config["DeviceNames"][device.DeviceId] = device.FriendlyName;
-                            hasNewDevices = true;
+                            changed = true;
                             Console.WriteLine($"ConfigurationService: Added new device to INI - {device.DeviceId} = '{device.FriendlyName}'");
                         }
                     }
@@ -132,11 +142,11 @@ namespace AudioLevelMeterPlugin.Services
                     }
                 }
 
-                // Save the updated INI file if we added new devices
-                if (hasNewDevices)
+                // Save the updated INI file if we added devices or the [Meter] section
+                if (changed)
                 {
                     parser.WriteFile(_configFilePath, config);
-                    Console.WriteLine("ConfigurationService: INI file updated with new devices");
+                    Console.WriteLine("ConfigurationService: INI file updated");
                     
                     // Reload configuration to pick up changes
                     LoadConfigurationFromIni(config);
@@ -243,6 +253,35 @@ namespace AudioLevelMeterPlugin.Services
             Console.WriteLine($"ConfigurationService: Spectrum enabled={_spectrum.Enabled} bands={_spectrum.Bands} {_spectrum.MinHz}-{_spectrum.MaxHz}Hz floor={_spectrum.FloorDb}dB");
         }
 
+        /// <summary>
+        /// Write the [Meter] section with the default scale
+        /// </summary>
+        private static void WriteMeterDefaults(IniData config)
+        {
+            var defaults = new MeterSettings();
+            config.Sections.AddSection("Meter");
+            config["Meter"]["Scale"] = defaults.Scale;
+            config["Meter"]["FloorDb"] = defaults.FloorDb.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Load the [Meter] section; missing or invalid keys keep their defaults
+        /// </summary>
+        private void LoadMeterFromIni(IniData config)
+        {
+            var defaults = new MeterSettings();
+            _meter.Scale = defaults.Scale;
+            _meter.FloorDb = defaults.FloorDb;
+            if (!config.Sections.ContainsSection("Meter")) return;
+
+            var section = config["Meter"];
+            string? scale = section["Scale"]?.Trim().ToLowerInvariant();
+            if (scale == MeterSettings.DbScale || scale == MeterSettings.LegacyScale) _meter.Scale = scale;
+            if (TryParseFloat(section["FloorDb"], out float floorDb) && floorDb < 0f) _meter.FloorDb = floorDb;
+
+            Console.WriteLine($"ConfigurationService: Meter scale={_meter.Scale} floor={_meter.FloorDb}dB");
+        }
+
         private static bool TryParseFloat(string? value, out float result)
         {
             return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
@@ -255,6 +294,7 @@ namespace AudioLevelMeterPlugin.Services
         {
             _customDeviceNames.Clear();
             LoadSpectrumFromIni(config);
+            LoadMeterFromIni(config);
 
             if (config.Sections.ContainsSection("DeviceNames"))
             {

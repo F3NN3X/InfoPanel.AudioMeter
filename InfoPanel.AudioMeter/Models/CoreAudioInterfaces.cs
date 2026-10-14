@@ -60,7 +60,8 @@ namespace AudioLevelMeterPlugin.Models
         int GetMeteringChannelCount(out uint pnChannelCount);
         
         [PreserveSig]
-        int GetChannelsPeakValues(uint u32ChannelCount, [Out] float[] afPeakValues);
+        // LPArray: the default marshaling for an array on a COM interface is a SAFEARRAY, which crashed
+        int GetChannelsPeakValues(uint u32ChannelCount, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] float[] afPeakValues);
         
         [PreserveSig]
         int QueryHardwareSupport(out uint pdwHardwareSupportMask);
@@ -200,6 +201,9 @@ namespace AudioLevelMeterPlugin.Models
         public ushort vt;
         [FieldOffset(8)]
         public IntPtr pwszVal;
+        // The native PROPVARIANT is 24 bytes on x64; keep the managed copy at least that large
+        [FieldOffset(16)]
+        private long _padding;
     }
 
     internal enum DataFlow
