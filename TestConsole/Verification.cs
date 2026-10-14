@@ -31,7 +31,7 @@ static class Verification
 
     private static int Usage()
     {
-        Console.WriteLine("Usage: TestConsole [--selftest | --live]");
+        Console.WriteLine("Usage: TestConsole [--selftest | --live | --noise | --diagnose <device-id-part>]");
         return 2;
     }
 
@@ -98,6 +98,35 @@ static class Verification
         bool decayed = buffer.All(v => v == 0f);
         if (!decayed) ok = false;
         Console.WriteLine($"decay: zeros after {steps} steps = {decayed}");
+
+        // Endpoint volume: loopback samples arrive after a software volume of -42.3 dB (6 % on the slider);
+        // the compensation gain must bring a -6 dBFS tone back to where it reads at full volume
+        float gain = LoopbackCaptureService.CompensationGain(-42.3f, 0.06f, false, false);
+        float[] ReadTone(float scale)
+        {
+            var analyzer = new SpectrumAnalyzer(sampleRate, Bands, MinHz, MaxHz, FloorDb);
+            var samples = new float[16384];
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] = (float)(0.5 * Math.Sin(2 * Math.PI * 1000.0 * i / sampleRate)) * scale;
+            analyzer.Push(samples);
+            var result = new float[Bands];
+            analyzer.CopyBands(result);
+            return result;
+        }
+        float attenuation = (float)Math.Pow(10, -42.3 / 20);
+        var (_, reference) = Peak(ReadTone(1f));
+        var (_, attenuated) = Peak(ReadTone(attenuation));
+        var (_, compensated) = Peak(ReadTone(attenuation * gain));
+        bool compensatedOk = Math.Abs(compensated - reference) <= 1f;
+        if (!compensatedOk) ok = false;
+        Console.WriteLine($"volume -42.3 dB: reference {reference:F1}, attenuated {attenuated:F1}, compensated {compensated:F1} {(compensatedOk ? "OK" : "MISMATCH")}");
+
+        bool passThrough = LoopbackCaptureService.CompensationGain(-42.3f, 0.06f, true, false) == 1f
+            && LoopbackCaptureService.CompensationGain(-42.3f, 0.06f, false, true) == 1f
+            && LoopbackCaptureService.CompensationGain(-96f, 0f, false, false) == 1f
+            && LoopbackCaptureService.CompensationGain(0f, 1f, false, false) == 1f;
+        if (!passThrough) ok = false;
+        Console.WriteLine($"volume muted / hardware / zero / full: gain 1 = {passThrough}");
 
         Console.WriteLine(ok ? "SELFTEST PASS" : "SELFTEST FAIL");
         return ok ? 0 : 1;
