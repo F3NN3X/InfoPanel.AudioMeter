@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using AudioLevelMeterPlugin.Models;
 
 namespace AudioLevelMeterPlugin.Services
@@ -10,8 +9,10 @@ namespace AudioLevelMeterPlugin.Services
     /// </summary>
     public class AdvancedAudioCalculator
     {
-        private readonly Queue<float[]> _sampleHistory;
+        private readonly float[][] _sampleHistory; // ring buffer of preallocated slots
         private readonly int _historySize;
+        private int _historyHead;
+        private int _historyCount;
         private readonly AudioMeterConfiguration _configuration;
         private float _peakHold;
         private DateTime _peakHoldTime;
@@ -20,8 +21,8 @@ namespace AudioLevelMeterPlugin.Services
         public AdvancedAudioCalculator(AudioMeterConfiguration? configuration = null)
         {
             _configuration = configuration ?? new AudioMeterConfiguration();
-            _historySize = _configuration.CalculatorHistoryMs / (int)_configuration.UpdateInterval.TotalMilliseconds;
-            _sampleHistory = new Queue<float[]>();
+            _historySize = Math.Max(0, _configuration.CalculatorHistoryMs / (int)_configuration.UpdateInterval.TotalMilliseconds);
+            _sampleHistory = new float[_historySize][];
             _peakHold = 0f;
             _peakHoldTime = DateTime.Now;
             _currentDecayValue = 0f;
@@ -37,25 +38,31 @@ namespace AudioLevelMeterPlugin.Services
             if (channelPeaks == null || channelPeaks.Length == 0)
                 return levels;
             
-            // Debug logging
-            if (channelPeaks.Any(p => p > 0f))
-            {
-                Console.WriteLine($"AdvancedAudioCalculator: Input peaks: [{string.Join(", ", channelPeaks.Select(p => p.ToString("F4")))}]");
-            }
-            
             // Calculate instantaneous peak across all channels
             float instantaneousPeak = 0f;
-            float sumSquares = 0f;
-            
             foreach (float channelPeak in channelPeaks)
             {
-                float abs = Math.Abs(channelPeak);
-                instantaneousPeak = Math.Max(instantaneousPeak, abs);
-                sumSquares += abs * abs;
+                instantaneousPeak = Math.Max(instantaneousPeak, Math.Abs(channelPeak));
             }
-            
-            // RMS calculation (magnitude level)
-            float rms = channelPeaks.Length > 0 ? (float)Math.Sqrt(sumSquares / channelPeaks.Length) : 0f;
+
+            // History first: the RMS below averages it
+            // (copied into a reused slot: the caller's array is reused between ticks)
+            if (_historySize > 0)
+            {
+                var slot = _sampleHistory[_historyHead];
+                if (slot == null || slot.Length != channelPeaks.Length)
+                {
+                    slot = new float[channelPeaks.Length];
+                    _sampleHistory[_historyHead] = slot;
+                }
+                Array.Copy(channelPeaks, slot, channelPeaks.Length);
+                _historyHead = (_historyHead + 1) % _historySize;
+                if (_historyCount < _historySize) _historyCount++;
+            }
+
+            // RMS (magnitude level) of the channel peaks over the last CalculatorHistoryMs. The meter API
+            // gives peaks, not samples, so this is a short loudness average that moves slower than the peak.
+            float rms = WindowRms(channelPeaks);
             
             // Peak hold logic (like OBS)
             if (instantaneousPeak > _peakHold)
@@ -76,33 +83,56 @@ namespace AudioLevelMeterPlugin.Services
             // Per-channel analysis (stereo)
             if (channelPeaks.Length >= 2)
             {
-                levels.LeftChannel = ScaleToPercentage(channelPeaks[0]);
-                levels.RightChannel = ScaleToPercentage(channelPeaks[1]);
+                levels.LeftChannel = ToPercent(channelPeaks[0]);
+                levels.RightChannel = ToPercent(channelPeaks[1]);
             }
             else if (channelPeaks.Length == 1)
             {
                 // Mono - duplicate to both channels
-                levels.LeftChannel = levels.RightChannel = ScaleToPercentage(channelPeaks[0]);
+                levels.LeftChannel = levels.RightChannel = ToPercent(channelPeaks[0]);
             }
             
-            // Overall level on the same ultra-responsive VU scale as the
-            // per-channel meters: scaling the stereo peak (max of L/R) with
-            // the channel curve keeps "Level" consistent with the channel
-            // values. The previous linear dB mapping (floor -96 dB, 100% at
-            // the -20 dB ceiling) read far hotter than the channels for the
-            // same signal.
-            levels.PercentageLevel = ScaleToPercentage(instantaneousPeak);
+            // Overall level on the same scale as the channels (the stereo peak, max of L/R)
+            levels.PercentageLevel = ToPercent(instantaneousPeak);
             
             // Apply decay to percentage level for existing behavior
             levels.PercentageLevel = Math.Max(levels.PercentageLevel, _currentDecayValue * _configuration.LevelDecayRate);
             _currentDecayValue = levels.PercentageLevel;
             
-            // Store history for future enhancements
-            _sampleHistory.Enqueue(channelPeaks);
-            if (_sampleHistory.Count > _historySize)
-                _sampleHistory.Dequeue();
-            
             return levels;
+        }
+
+        /// <summary>
+        /// Root mean square of every channel peak in the history, or of the current peaks without one
+        /// </summary>
+        private float WindowRms(float[] current)
+        {
+            double sum = 0;
+            int n = 0;
+            if (_historyCount == 0)
+            {
+                foreach (float p in current) { sum += p * p; n++; }
+            }
+            else
+            {
+                for (int i = 0; i < _historyCount; i++)
+                {
+                    foreach (float p in _sampleHistory[i]) { sum += p * p; n++; }
+                }
+            }
+            return n > 0 ? (float)Math.Sqrt(sum / n) : 0f;
+        }
+
+        /// <summary>
+        /// A peak amplitude (0.0-1.0) as a meter percentage on the configured scale
+        /// </summary>
+        private float ToPercent(float amplitude)
+        {
+            var meter = _configuration.Meter;
+            if (meter.Scale == MeterSettings.LegacyScale) return ScaleToPercentage(amplitude);
+            if (amplitude <= 0f) return 0f;
+            float db = 20f * (float)Math.Log10(amplitude);
+            return Math.Clamp((db - meter.FloorDb) / -meter.FloorDb * 100f, 0f, 100f);
         }
         
         /// <summary>
@@ -126,7 +156,7 @@ namespace AudioLevelMeterPlugin.Services
         }
         
         /// <summary>
-        /// Scale individual channel to percentage using existing ultra-responsive algorithm
+        /// The legacy scale ([Meter] Scale = legacy): reads 90% at -12 dBFS and 99% from -8 dBFS
         /// </summary>
         private static float ScaleToPercentage(float channelValue)
         {
@@ -180,7 +210,8 @@ namespace AudioLevelMeterPlugin.Services
             _peakHold = 0f;
             _peakHoldTime = DateTime.Now;
             _currentDecayValue = 0f;
-            _sampleHistory.Clear();
+            _historyHead = 0;
+            _historyCount = 0;
         }
     }
 }

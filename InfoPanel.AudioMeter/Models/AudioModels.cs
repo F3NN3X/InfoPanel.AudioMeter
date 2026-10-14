@@ -67,6 +67,31 @@ namespace AudioLevelMeterPlugin.Models
         /// Spectrum band settings (the [Spectrum] section of the ini)
         /// </summary>
         public SpectrumSettings Spectrum { get; } = new SpectrumSettings();
+
+        /// <summary>
+        /// How levels map to percent (the [Meter] section of the ini)
+        /// </summary>
+        public MeterSettings Meter { get; } = new MeterSettings();
+    }
+
+    /// <summary>
+    /// Level scale settings (the [Meter] section of the ini)
+    /// </summary>
+    public class MeterSettings
+    {
+        public const string DbScale = "db";
+        public const string LegacyScale = "legacy";
+
+        /// <summary>
+        /// "db": percent is linear in dB, FloorDb reads 0% and 0 dBFS 100%.
+        /// "legacy": the curve before 1.4.0, which reads 90% at -12 dBFS and 99% from -8 dBFS.
+        /// </summary>
+        public string Scale { get; set; } = DbScale;
+
+        /// <summary>
+        /// The level that reads 0% on the dB scale
+        /// </summary>
+        public float FloorDb { get; set; } = -60f;
     }
 
     /// <summary>

@@ -51,7 +51,7 @@ namespace AudioLevelMeterPlugin
                 // Set up configuration service
                 Assembly assembly = Assembly.GetExecutingAssembly();
                 string configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
-                _configurationService = new ConfigurationService(configFilePath, _configuration.Spectrum);
+                _configurationService = new ConfigurationService(configFilePath, _configuration.Spectrum, _configuration.Meter);
                 _configurationService.LoadConfiguration();
 
                 // Initialize container service
@@ -139,12 +139,17 @@ namespace AudioLevelMeterPlugin
             {
                 Console.WriteLine("AudioLevelMeter closing...");
                 
-                _loopbackService?.Dispose();
-                _loopbackService = null;
-                _coreAudioService?.Dispose();
-                _decayValues.Clear();
-                _audioCalculators.Clear();
-                _containerService?.ClearContainers();
+                // Wait for an in-flight Update so no COM object is used after it is released
+                lock (_lockObject)
+                {
+                    _loopbackService?.Dispose();
+                    _loopbackService = null;
+                    _coreAudioService?.Dispose();
+                    _coreAudioService = null;
+                    _decayValues.Clear();
+                    _audioCalculators.Clear();
+                    _containerService?.ClearContainers();
+                }
                 
                 Console.WriteLine("AudioLevelMeter cleanup complete");
             }
@@ -253,7 +258,7 @@ namespace AudioLevelMeterPlugin
                 // Update device name
                 _containerService.UpdateContainerDeviceName(container, defaultDevice.DisplayName);
 
-                // Get audio levels
+                // Get audio levels (the meter is cached and owned by the service)
                 var audioMeter = _coreAudioService.GetDefaultAudioMeter();
                 if (audioMeter != null)
                 {
@@ -262,7 +267,6 @@ namespace AudioLevelMeterPlugin
                     var levels = calculator.CalculateAdvancedLevels(channelPeaks);
                     
                     _containerService.UpdateContainerSensors(container, levels);
-                    Marshal.ReleaseComObject(audioMeter);
                 }
             }
             catch (Exception ex)

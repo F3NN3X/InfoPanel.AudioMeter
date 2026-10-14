@@ -57,14 +57,21 @@ Once installed, the Audio Meter plugin will appear in InfoPanel's sensor list wi
   - Device friendly name, device name, and real-time audio level with VU meter behavior
 - **Update Rate**: 20 FPS (50ms intervals) for smooth metering
 
-### VU Meter Behavior
+### Meter Scale
 
-The plugin features responsive scaling curves designed for realistic music monitoring:
+`audio-level`, `left-channel` and `right-channel` are percentages on a dB scale: `FloorDb` reads 0% and 0 dBFS (full scale) reads 100%, linearly in dB. With the default floor of -60 dB, -6 dBFS reads 90%, -12 dBFS 80% and -30 dBFS 50%, so loud music keeps moving instead of sitting at the top. Left and right are the device's real channel peaks.
 
-- **Typical Music Content**: Raw audio signals around 0.25-0.4 (normal loud music) display as 90-99% on the meters
-- **Full Volume Music**: Music at 100% system volume consistently hits 95-100% on the VU meters  
-- **Scaling Algorithm**: Multi-tier algorithm that provides realistic VU meter response
-- **Dynamic Range**: Quiet sounds (0.01-0.05 raw) scale to 3-21%, moderate sounds (0.05-0.15 raw) scale to 21-60%
+`rms-level` is the RMS of the channel peaks over the last 300 ms: Windows' meter gives peaks, not samples, so it is a short loudness average that moves slower than `peak-level`.
+
+Configure it in the `[Meter]` section of the ini (defaults shown). `Scale = legacy` brings back the curve from before 1.4.0, which reads 90% at -12 dBFS and 99% from -8 dBFS:
+
+```ini
+[Meter]
+Scale = db
+FloorDb = -60
+```
+
+Restart InfoPanel to apply changes.
 
 ### Spectrum
 
@@ -149,10 +156,10 @@ InfoPanel.AudioMeter/
 - **Device Management**: Device caching with COM object lifecycle management
 - **Memory Safety**: Proper disposal patterns and safe COM marshaling to prevent memory leaks
 - **Default Device Tracking**: Monitoring that follows Windows default device changes
-- **Channel Processing**: Averaging of left/right peak values for mono output per device
+- **Channel Processing**: Per-channel peaks from `GetChannelsPeakValues`, falling back to the overall peak
 - **VU Meter Algorithms**: 
   - **Decay**: `Math.Max(peakValue, currentValue * 0.85f)` for realistic falloff behavior
-  - **Responsive Scaling**: Multi-tier curves that make music hit 95-100% consistently
+  - **Scaling**: Linear in dB from `FloorDb` to 0 dBFS (`[Meter] Scale = legacy` for the old multi-tier curve)
 - **Error Recovery**: Exception handling for COM marshaling failures and audio system issues
 
 ### Device Container Structure
@@ -243,6 +250,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
+- **1.4.0** - 🎚️ **Meter scale** - Levels on a dB scale that keeps moving with loud music, real left/right peaks, an RMS that averages the last 300 ms, a `[Meter]` ini section, and the host process no longer leaks memory
 - **1.3.0** - 🌈 **Spectrum** - New `spectrum` entry with real frequency bands from WASAPI loopback capture, and a `[Spectrum]` ini section
 - **1.2.0** - 🎛️ **Professional Audio Monitoring** - Added OBS-style dual level processing (peak + RMS), professional dB scale readings, per-channel analysis, and peak hold indicators while maintaining full backward compatibility
 - **1.1.0** - Added device name customization via INI file, improved VU meter scaling for realistic music response, enhanced error handling and logging

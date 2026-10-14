@@ -111,8 +111,14 @@ namespace AudioLevelMeterPlugin.Services
                     foreach (var t in _targets) t.Latest = string.Empty;
                     return;
                 }
-                enumerator = (IMMDeviceEnumerator)Marshal.GetObjectForIUnknown(pUnknown);
-                Marshal.Release(pUnknown);
+                try
+                {
+                    enumerator = (IMMDeviceEnumerator)Marshal.GetObjectForIUnknown(pUnknown);
+                }
+                finally
+                {
+                    Marshal.Release(pUnknown);
+                }
 
                 while (!_stop)
                 {
@@ -167,6 +173,9 @@ namespace AudioLevelMeterPlugin.Services
             private bool _isFloat;
             private float[] _mono = new float[4096];
             private readonly float[] _bandBuffer;
+            private readonly int[] _publishedBands = new int[64];
+            private int _publishedCount = -1;
+            private readonly StringBuilder _sb = new(256);
 
             private bool _loggedFailure;
             private long _nextRetry;
@@ -292,9 +301,8 @@ namespace AudioLevelMeterPlugin.Services
                     _activeDeviceId = GetId(device);
 
                     var iidClient = CoreAudioConstants.IID_IAudioClient;
-                    device.Activate(ref iidClient, CoreAudioConstants.CLSCTX_ALL, IntPtr.Zero, out IntPtr pClient);
-                    _client = (IAudioClient)Marshal.GetObjectForIUnknown(pClient);
-                    Marshal.Release(pClient);
+                    int hrClient = device.Activate(ref iidClient, CoreAudioConstants.CLSCTX_ALL, IntPtr.Zero, out IntPtr pClient);
+                    _client = WrapAndRelease<IAudioClient>(pClient, hrClient);
 
                     int hr = _client.GetMixFormat(out pFormat);
                     if (hr != CoreAudioConstants.S_OK) { Fail(now, $"GetMixFormat 0x{hr:X8}"); return false; }
@@ -307,18 +315,17 @@ namespace AudioLevelMeterPlugin.Services
                     var iidCapture = CoreAudioConstants.IID_IAudioCaptureClient;
                     hr = _client.GetService(ref iidCapture, out IntPtr pCapture);
                     if (hr != CoreAudioConstants.S_OK) { Fail(now, $"GetService 0x{hr:X8}"); return false; }
-                    _capture = (IAudioCaptureClient)Marshal.GetObjectForIUnknown(pCapture);
-                    Marshal.Release(pCapture);
+                    _capture = WrapAndRelease<IAudioCaptureClient>(pCapture, hr);
 
                     hr = _client.Start();
                     if (hr != CoreAudioConstants.S_OK) { Fail(now, $"Start 0x{hr:X8}"); return false; }
 
                     // Without the endpoint volume the bands are left uncompensated rather than failing
                     var iidVolume = CoreAudioConstants.IID_IAudioEndpointVolume;
-                    if (device.Activate(ref iidVolume, CoreAudioConstants.CLSCTX_ALL, IntPtr.Zero, out IntPtr pVolume) == CoreAudioConstants.S_OK)
+                    int hrVolume = device.Activate(ref iidVolume, CoreAudioConstants.CLSCTX_ALL, IntPtr.Zero, out IntPtr pVolume);
+                    if (hrVolume == CoreAudioConstants.S_OK && pVolume != IntPtr.Zero)
                     {
-                        _volume = (IAudioEndpointVolume)Marshal.GetObjectForIUnknown(pVolume);
-                        Marshal.Release(pVolume);
+                        _volume = WrapAndRelease<IAudioEndpointVolume>(pVolume, hrVolume);
                         _hardwareVolume = _volume.QueryHardwareSupport(out uint mask) == CoreAudioConstants.S_OK
                             && (mask & CoreAudioConstants.ENDPOINT_HARDWARE_SUPPORT_VOLUME) != 0;
                     }
@@ -376,10 +383,36 @@ namespace AudioLevelMeterPlugin.Services
 
             private static string? GetId(IMMDevice device)
             {
-                if (device.GetId(out IntPtr ptr) != CoreAudioConstants.S_OK || ptr == IntPtr.Zero) return null;
-                string? id = Marshal.PtrToStringUni(ptr);
-                Marshal.FreeCoTaskMem(ptr);
-                return id;
+                int hr = device.GetId(out IntPtr ptr);
+                if (ptr == IntPtr.Zero) return null;
+                try
+                {
+                    return hr == CoreAudioConstants.S_OK ? Marshal.PtrToStringUni(ptr) : null;
+                }
+                finally
+                {
+                    Marshal.FreeCoTaskMem(ptr);
+                }
+            }
+
+            /// <summary>
+            /// Wrap a raw interface pointer in an RCW and drop the reference the activation call handed us
+            /// </summary>
+            private static T WrapAndRelease<T>(IntPtr ptr, int hr) where T : class
+            {
+                if (hr != CoreAudioConstants.S_OK || ptr == IntPtr.Zero)
+                {
+                    if (ptr != IntPtr.Zero) Marshal.Release(ptr);
+                    throw new InvalidOperationException($"{typeof(T).Name} unavailable 0x{hr:X8}");
+                }
+                try
+                {
+                    return (T)Marshal.GetObjectForIUnknown(ptr);
+                }
+                finally
+                {
+                    Marshal.Release(ptr);
+                }
             }
 
             private void ReadFormat(IntPtr pFormat, out int sampleRate)
@@ -458,11 +491,21 @@ namespace AudioLevelMeterPlugin.Services
                 int n = analyzer.BandCount;
                 analyzer.CopyBands(_bandBuffer.AsSpan(0, n));
 
-                var sb = new StringBuilder(n * 4);
+                // Skip the string build when the rounded bands are the same as the last published ones
+                bool changed = n != _publishedCount || Latest.Length == 0;
+                for (int i = 0; i < n; i++)
+                {
+                    int v = (int)Math.Round(_bandBuffer[i]);
+                    if (_publishedBands[i] != v) { _publishedBands[i] = v; changed = true; }
+                }
+                if (!changed) return;
+
+                _publishedCount = n;
+                var sb = _sb.Clear();
                 for (int i = 0; i < n; i++)
                 {
                     if (i > 0) sb.Append(',');
-                    sb.Append((int)Math.Round(_bandBuffer[i]));
+                    sb.Append(_publishedBands[i]);
                 }
                 Latest = sb.ToString();
             }
