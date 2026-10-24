@@ -32,12 +32,23 @@ namespace AudioLevelMeterPlugin.Services
         }
 
         /// <summary>
+        /// Create the container that follows the default input device
+        /// </summary>
+        public PluginContainer CreateDefaultInputContainer()
+        {
+            var container = new PluginContainer("default-input", "Audio Level Meter (Input)");
+            AddAudioSensors(container, "Initializing...", "input");
+            _containers.Add(container);
+            return container;
+        }
+
+        /// <summary>
         /// Create a container for a specific audio device
         /// </summary>
         public PluginContainer CreateDeviceContainer(AudioDeviceInfo device)
         {
             var container = new PluginContainer(device.ContainerId, $"🎵 {device.DisplayName}");
-            AddAudioSensors(container, device.DisplayName);
+            AddAudioSensors(container, device.DisplayName, device.IsInput ? "input" : "output");
             _containers.Add(container);
             return container;
         }
@@ -192,8 +203,11 @@ namespace AudioLevelMeterPlugin.Services
         /// <summary>
         /// Add standard audio sensors to a container
         /// </summary>
-        private void AddAudioSensors(PluginContainer container, string deviceName)
+        private void AddAudioSensors(PluginContainer container, string deviceName, string dataFlow = "output")
         {
+            // Which way the device faces: "output" (render endpoint) or "input" (capture endpoint)
+            container.Entries.Add(new PluginText("data-flow", "Data Flow", dataFlow));
+
             // Device information
             var deviceNameEntry = new PluginText("device-name", "Device", deviceName);
             container.Entries.Add(deviceNameEntry);

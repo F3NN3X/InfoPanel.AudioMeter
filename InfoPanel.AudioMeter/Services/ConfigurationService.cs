@@ -18,12 +18,14 @@ namespace AudioLevelMeterPlugin.Services
         private readonly Dictionary<string, string> _customDeviceNames = new();
         private readonly SpectrumSettings _spectrum;
         private readonly MeterSettings _meter;
+        private readonly DeviceSettings _devices;
 
-        public ConfigurationService(string configFilePath, SpectrumSettings? spectrum = null, MeterSettings? meter = null)
+        public ConfigurationService(string configFilePath, SpectrumSettings? spectrum = null, MeterSettings? meter = null, DeviceSettings? devices = null)
         {
             _configFilePath = configFilePath;
             _spectrum = spectrum ?? new SpectrumSettings();
             _meter = meter ?? new MeterSettings();
+            _devices = devices ?? new DeviceSettings();
         }
 
         /// <summary>
@@ -70,6 +72,7 @@ namespace AudioLevelMeterPlugin.Services
                 config["Spectrum"]["MaxHz"] = _spectrum.MaxHz.ToString(CultureInfo.InvariantCulture);
                 config["Spectrum"]["FloorDb"] = _spectrum.FloorDb.ToString(CultureInfo.InvariantCulture);
                 WriteMeterDefaults(config);
+                WriteDevicesDefaults(config);
                 config.Sections.AddSection("DeviceNames");
 
                 // Add discovered devices with their default names
@@ -124,6 +127,13 @@ namespace AudioLevelMeterPlugin.Services
                     changed = true;
                 }
 
+                // Ini files from before 1.5.0 get the [Devices] section, so inputs can be switched on
+                if (!config.Sections.ContainsSection("Devices"))
+                {
+                    WriteDevicesDefaults(config);
+                    changed = true;
+                }
+
                 // Add any new devices that aren't in the INI yet
                 foreach (var device in devices)
                 {
@@ -142,7 +152,7 @@ namespace AudioLevelMeterPlugin.Services
                     }
                 }
 
-                // Save the updated INI file if we added devices or the [Meter] section
+                // Save the updated INI file if we added devices or the [Meter] or [Devices] section
                 if (changed)
                 {
                     parser.WriteFile(_configFilePath, config);
@@ -282,6 +292,29 @@ namespace AudioLevelMeterPlugin.Services
             Console.WriteLine($"ConfigurationService: Meter scale={_meter.Scale} floor={_meter.FloorDb}dB");
         }
 
+        /// <summary>
+        /// Write the [Devices] section with inputs off
+        /// </summary>
+        private static void WriteDevicesDefaults(IniData config)
+        {
+            var defaults = new DeviceSettings();
+            config.Sections.AddSection("Devices");
+            config["Devices"]["IncludeInputs"] = defaults.IncludeInputs.ToString().ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// Load the [Devices] section; missing or invalid keys keep their defaults
+        /// </summary>
+        private void LoadDevicesFromIni(IniData config)
+        {
+            _devices.IncludeInputs = new DeviceSettings().IncludeInputs;
+            if (!config.Sections.ContainsSection("Devices")) return;
+
+            if (bool.TryParse(config["Devices"]["IncludeInputs"], out bool includeInputs)) _devices.IncludeInputs = includeInputs;
+
+            Console.WriteLine($"ConfigurationService: Devices includeInputs={_devices.IncludeInputs}");
+        }
+
         private static bool TryParseFloat(string? value, out float result)
         {
             return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
@@ -295,6 +328,7 @@ namespace AudioLevelMeterPlugin.Services
             _customDeviceNames.Clear();
             LoadSpectrumFromIni(config);
             LoadMeterFromIni(config);
+            LoadDevicesFromIni(config);
 
             if (config.Sections.ContainsSection("DeviceNames"))
             {

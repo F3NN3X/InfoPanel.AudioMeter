@@ -51,19 +51,25 @@ namespace AudioLevelMeterPlugin
                 // Set up configuration service
                 Assembly assembly = Assembly.GetExecutingAssembly();
                 string configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
-                _configurationService = new ConfigurationService(configFilePath, _configuration.Spectrum, _configuration.Meter);
+                _configurationService = new ConfigurationService(configFilePath, _configuration.Spectrum, _configuration.Meter, _configuration.Devices);
                 _configurationService.LoadConfiguration();
 
                 // Initialize container service
                 _containerService = new ContainerService(_configuration);
 
-                // Create default container
+                // Create default containers
                 var defaultContainer = _containerService.CreateDefaultContainer();
                 _decayValues["default-audio"] = 0f;
                 _audioCalculators["default-audio"] = new AdvancedAudioCalculator(_configuration);
+                if (_configuration.Devices.IncludeInputs)
+                {
+                    _containerService.CreateDefaultInputContainer();
+                    _decayValues["default-input"] = 0f;
+                    _audioCalculators["default-input"] = new AdvancedAudioCalculator(_configuration);
+                }
 
                 // Enumerate all audio devices
-                _audioDevices = _coreAudioService.GetAudioOutputDevices();
+                _audioDevices = _coreAudioService.GetAudioDevices(_configuration.Devices.IncludeInputs);
                 Console.WriteLine($"Found {_audioDevices.Count} audio devices");
 
                 // Create containers for each device
@@ -111,8 +117,10 @@ namespace AudioLevelMeterPlugin
             {
                 try
                 {
-                    // Update default device audio level
-                    UpdateDefaultDeviceLevel();
+                    // Update default device audio levels
+                    UpdateDefaultDeviceLevel("default-audio", _coreAudioService.GetDefaultAudioDevice, _coreAudioService.GetDefaultAudioMeter);
+                    if (_configuration.Devices.IncludeInputs)
+                        UpdateDefaultDeviceLevel("default-input", _coreAudioService.GetDefaultInputDevice, _coreAudioService.GetDefaultInputMeter);
 
                     // Update all device audio levels
                     UpdateAllDeviceLevels();
@@ -204,19 +212,23 @@ namespace AudioLevelMeterPlugin
         }
 
         /// <summary>
-        /// Start loopback capture for every device container and the default device
+        /// Start capture for every device container and the default devices: loopback for outputs and, when
+        /// inputs are on, a shared-mode capture stream for inputs (an input meter only reads while one is open)
         /// </summary>
         private void StartSpectrumCapture()
         {
             try
             {
-                if (!_configuration.Spectrum.Enabled) return;
+                // With the spectrum off, inputs still need their capture stream to meter at all; outputs need none.
+                bool spectrum = _configuration.Spectrum.Enabled;
+                if (!spectrum && !_configuration.Devices.IncludeInputs) return;
 
                 _loopbackService = new LoopbackCaptureService(_configuration.Spectrum);
-                _loopbackService.AddTarget("default-audio", null);
+                if (spectrum) _loopbackService.AddTarget("default-audio", null);
+                if (_configuration.Devices.IncludeInputs) _loopbackService.AddTarget("default-input", null, isInput: true);
                 foreach (var device in _audioDevices)
                 {
-                    _loopbackService.AddTarget(device.ContainerId, device.DeviceId);
+                    if (spectrum || device.IsInput) _loopbackService.AddTarget(device.ContainerId, device.DeviceId, device.IsInput);
                 }
                 _loopbackService.Start();
             }
@@ -231,7 +243,8 @@ namespace AudioLevelMeterPlugin
         /// </summary>
         private void UpdateSpectra()
         {
-            if (_containerService == null) return;
+            // Off: the input streams run for their meters only.
+            if (_containerService == null || !_configuration.Spectrum.Enabled) return;
 
             foreach (var container in _containerService.GetAllContainers())
             {
@@ -241,29 +254,29 @@ namespace AudioLevelMeterPlugin
         }
 
         /// <summary>
-        /// Update audio levels for the default device
+        /// Update audio levels for a default device container (default-audio or default-input)
         /// </summary>
-        private void UpdateDefaultDeviceLevel()
+        private void UpdateDefaultDeviceLevel(string containerId, Func<AudioDeviceInfo?> getDevice, Func<IAudioMeterInformation?> getMeter)
         {
             if (_coreAudioService == null || _containerService == null) return;
 
             try
             {
-                var defaultDevice = _coreAudioService.GetDefaultAudioDevice();
+                var defaultDevice = getDevice();
                 if (defaultDevice == null) return;
 
-                var container = _containerService.FindContainer("default-audio");
+                var container = _containerService.FindContainer(containerId);
                 if (container == null) return;
 
                 // Update device name
                 _containerService.UpdateContainerDeviceName(container, defaultDevice.DisplayName);
 
                 // Get audio levels (the meter is cached and owned by the service)
-                var audioMeter = _coreAudioService.GetDefaultAudioMeter();
+                var audioMeter = getMeter();
                 if (audioMeter != null)
                 {
                     var channelPeaks = _coreAudioService.GetChannelPeakValues(audioMeter);
-                    var calculator = _audioCalculators["default-audio"];
+                    var calculator = _audioCalculators[containerId];
                     var levels = calculator.CalculateAdvancedLevels(channelPeaks);
                     
                     _containerService.UpdateContainerSensors(container, levels);
@@ -291,7 +304,7 @@ namespace AudioLevelMeterPlugin
                     try
                     {
                         string containerId = kvp.Key;
-                        if (containerId == "default-audio") continue; // Already handled above
+                        if (containerId == "default-audio" || containerId == "default-input") continue; // Already handled above
 
                         var audioMeter = kvp.Value;
                         var container = _containerService.FindContainer(containerId);

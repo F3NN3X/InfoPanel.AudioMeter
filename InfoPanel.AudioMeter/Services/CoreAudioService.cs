@@ -25,13 +25,32 @@ namespace AudioLevelMeterPlugin.Services
         private bool _disposed = false;
 
         // Default endpoint state: resolved once, re-checked about once a second
-        private IAudioMeterInformation? _defaultMeter;
-        private AudioDeviceInfo? _defaultDeviceInfo;
-        private long _lastDefaultCheck;
-        private long _nextDefaultRetry;
+        private readonly DefaultEndpoint _defaultOutput = new(DataFlow.Render, Role.Multimedia, "default-audio");
+        private readonly DefaultEndpoint _defaultInput = new(DataFlow.Capture, Role.Multimedia, "default-input");
 
         // Last peak-read failure that was logged (0 = none), so a failing meter logs once instead of every tick
         private int _lastPeakErrorHr;
+
+        /// <summary>
+        /// Cached state of one default endpoint (the default output or the default input)
+        /// </summary>
+        private sealed class DefaultEndpoint
+        {
+            public DefaultEndpoint(DataFlow flow, Role role, string containerId)
+            {
+                Flow = flow;
+                Role = role;
+                ContainerId = containerId;
+            }
+
+            public DataFlow Flow { get; }
+            public Role Role { get; }
+            public string ContainerId { get; }
+            public IAudioMeterInformation? Meter;
+            public AudioDeviceInfo? Info;
+            public long LastCheck;
+            public long NextRetry;
+        }
 
         [DllImport("ole32.dll")]
         private static extern void PropVariantClear(ref PROPVARIANT pvar);
@@ -78,30 +97,45 @@ namespace AudioLevelMeterPlugin.Services
         }
 
         /// <summary>
-        /// Get all active audio output devices
+        /// Get all active audio output devices, and the input devices when asked for
         /// </summary>
-        public List<AudioDeviceInfo> GetAudioOutputDevices()
+        public List<AudioDeviceInfo> GetAudioDevices(bool includeInputs)
         {
             var devices = new List<AudioDeviceInfo>();
 
             if (_deviceEnumerator == null)
                 return devices;
 
+            var seen = new HashSet<string>();
+            EnumerateDevices(DataFlow.Render, devices, seen);
+            if (includeInputs) EnumerateDevices(DataFlow.Capture, devices, seen);
+
+            // Devices that are no longer active
+            foreach (var staleId in _cachedDevices.Keys.Where(k => !seen.Contains(k)).ToList())
+            {
+                ReleaseCachedDevice(staleId);
+            }
+
+            return devices;
+        }
+
+        private void EnumerateDevices(DataFlow flow, List<AudioDeviceInfo> devices, HashSet<string> seen)
+        {
+            string flowName = flow == DataFlow.Capture ? "input" : "output";
             IMMDeviceCollection? deviceCollection = null;
             try
             {
-                int hr = _deviceEnumerator.EnumAudioEndpoints(DataFlow.Render, 1, out deviceCollection); // 1 = DEVICE_STATE_ACTIVE
+                int hr = _deviceEnumerator!.EnumAudioEndpoints(flow, 1, out deviceCollection); // 1 = DEVICE_STATE_ACTIVE
                 if (hr != CoreAudioConstants.S_OK)
                 {
-                    Console.WriteLine($"CoreAudioService: Failed to enumerate devices. HRESULT: 0x{hr:X8}");
-                    return devices;
+                    Console.WriteLine($"CoreAudioService: Failed to enumerate {flowName} devices. HRESULT: 0x{hr:X8}");
+                    return;
                 }
 
                 uint deviceCount;
                 deviceCollection.GetCount(out deviceCount);
-                Console.WriteLine($"CoreAudioService: Found {deviceCount} active audio output devices");
+                Console.WriteLine($"CoreAudioService: Found {deviceCount} active audio {flowName} devices");
 
-                var seen = new HashSet<string>();
                 for (uint i = 0; i < deviceCount; i++)
                 {
                     IMMDevice? device = null;
@@ -119,7 +153,8 @@ namespace AudioLevelMeterPlugin.Services
                             DeviceId = deviceId,
                             FriendlyName = friendlyName,
                             ContainerId = containerId,
-                            IsDefault = false
+                            IsDefault = false,
+                            IsInput = flow == DataFlow.Capture
                         };
 
                         devices.Add(deviceInfo);
@@ -128,7 +163,7 @@ namespace AudioLevelMeterPlugin.Services
                         stored = true;
                         seen.Add(containerId);
 
-                        Console.WriteLine($"CoreAudioService: Device {i}: {friendlyName} (ID: {deviceId})");
+                        Console.WriteLine($"CoreAudioService: Device {i} ({flowName}): {friendlyName} (ID: {deviceId})");
                     }
                     catch (Exception deviceEx)
                     {
@@ -139,12 +174,6 @@ namespace AudioLevelMeterPlugin.Services
                         if (!stored && device != null) Marshal.ReleaseComObject(device);
                     }
                 }
-
-                // Devices that are no longer active
-                foreach (var staleId in _cachedDevices.Keys.Where(k => !seen.Contains(k)).ToList())
-                {
-                    ReleaseCachedDevice(staleId);
-                }
             }
             catch (Exception ex)
             {
@@ -154,8 +183,6 @@ namespace AudioLevelMeterPlugin.Services
             {
                 if (deviceCollection != null) Marshal.ReleaseComObject(deviceCollection);
             }
-
-            return devices;
         }
 
         /// <summary>
@@ -180,8 +207,17 @@ namespace AudioLevelMeterPlugin.Services
         /// </summary>
         public AudioDeviceInfo? GetDefaultAudioDevice()
         {
-            RefreshDefault();
-            return _defaultDeviceInfo;
+            RefreshDefault(_defaultOutput);
+            return _defaultOutput.Info;
+        }
+
+        /// <summary>
+        /// Get the current default audio input device (cached; re-resolved when the default endpoint changes)
+        /// </summary>
+        public AudioDeviceInfo? GetDefaultInputDevice()
+        {
+            RefreshDefault(_defaultInput);
+            return _defaultInput.Info;
         }
 
         /// <summary>
@@ -213,13 +249,22 @@ namespace AudioLevelMeterPlugin.Services
         }
 
         /// <summary>
-        /// Get the audio meter of the default device. The service owns it: callers must not release it,
+        /// Get the audio meter of the default output device. The service owns it: callers must not release it,
         /// and it stays valid only until the next call (the default endpoint may change).
         /// </summary>
         public IAudioMeterInformation? GetDefaultAudioMeter()
         {
-            RefreshDefault();
-            return _defaultMeter;
+            RefreshDefault(_defaultOutput);
+            return _defaultOutput.Meter;
+        }
+
+        /// <summary>
+        /// Get the audio meter of the default input device, with the same ownership rules as GetDefaultAudioMeter
+        /// </summary>
+        public IAudioMeterInformation? GetDefaultInputMeter()
+        {
+            RefreshDefault(_defaultInput);
+            return _defaultInput.Meter;
         }
 
         /// <summary>
@@ -252,55 +297,56 @@ namespace AudioLevelMeterPlugin.Services
         }
 
         /// <summary>
-        /// Re-resolve the default endpoint at most once per interval; the meter and device info are only
+        /// Re-resolve a default endpoint at most once per interval; the meter and device info are only
         /// rebuilt when the endpoint id changed (or when there is no valid meter yet).
         /// </summary>
-        private void RefreshDefault()
+        private void RefreshDefault(DefaultEndpoint endpoint)
         {
             if (_deviceEnumerator == null)
                 return;
 
             long now = Environment.TickCount64;
-            if (_defaultMeter != null ? now - _lastDefaultCheck < DefaultCheckIntervalMs : now < _nextDefaultRetry)
+            if (endpoint.Meter != null ? now - endpoint.LastCheck < DefaultCheckIntervalMs : now < endpoint.NextRetry)
                 return;
 
-            _lastDefaultCheck = now;
-            _nextDefaultRetry = now + DefaultCheckIntervalMs;
+            endpoint.LastCheck = now;
+            endpoint.NextRetry = now + DefaultCheckIntervalMs;
 
             IMMDevice? defaultDevice = null;
             try
             {
-                int hr = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia, out defaultDevice);
+                int hr = _deviceEnumerator.GetDefaultAudioEndpoint(endpoint.Flow, endpoint.Role, out defaultDevice);
                 if (hr != CoreAudioConstants.S_OK)
                 {
-                    ReleaseDefault();
+                    ReleaseDefault(endpoint);
                     return;
                 }
 
                 string deviceId = GetDeviceId(defaultDevice);
-                if (_defaultMeter != null && _defaultDeviceInfo?.DeviceId == deviceId)
+                if (endpoint.Meter != null && endpoint.Info?.DeviceId == deviceId)
                     return;
 
-                ReleaseDefault();
+                ReleaseDefault(endpoint);
 
                 var meter = ActivateMeter(defaultDevice);
                 if (meter == null)
                     return;
 
-                _defaultMeter = meter;
-                _defaultDeviceInfo = new AudioDeviceInfo
+                endpoint.Meter = meter;
+                endpoint.Info = new AudioDeviceInfo
                 {
                     DeviceId = deviceId,
                     FriendlyName = GetDeviceFriendlyName(defaultDevice),
-                    ContainerId = "default-audio",
-                    IsDefault = true
+                    ContainerId = endpoint.ContainerId,
+                    IsDefault = true,
+                    IsInput = endpoint.Flow == DataFlow.Capture
                 };
                 _lastPeakErrorHr = 0;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"CoreAudioService: Failed to get default device: {ex.Message}");
-                ReleaseDefault();
+                ReleaseDefault(endpoint);
             }
             finally
             {
@@ -308,11 +354,11 @@ namespace AudioLevelMeterPlugin.Services
             }
         }
 
-        private void ReleaseDefault()
+        private static void ReleaseDefault(DefaultEndpoint endpoint)
         {
-            var meter = _defaultMeter;
-            _defaultMeter = null;
-            _defaultDeviceInfo = null;
+            var meter = endpoint.Meter;
+            endpoint.Meter = null;
+            endpoint.Info = null;
             if (meter != null)
             {
                 try { Marshal.ReleaseComObject(meter); } catch { }
@@ -387,10 +433,13 @@ namespace AudioLevelMeterPlugin.Services
                 Console.WriteLine($"CoreAudioService: {message}");
             }
 
-            if (ReferenceEquals(audioMeter, _defaultMeter))
+            foreach (var endpoint in new[] { _defaultOutput, _defaultInput })
             {
-                ReleaseDefault();
-                _nextDefaultRetry = 0;
+                if (ReferenceEquals(audioMeter, endpoint.Meter))
+                {
+                    ReleaseDefault(endpoint);
+                    endpoint.NextRetry = 0;
+                }
             }
         }
 
@@ -476,7 +525,8 @@ namespace AudioLevelMeterPlugin.Services
             {
                 Console.WriteLine("CoreAudioService: Cleaning up resources...");
 
-                ReleaseDefault();
+                ReleaseDefault(_defaultOutput);
+                ReleaseDefault(_defaultInput);
 
                 // Release all audio meter COM objects
                 foreach (var audioMeter in _audioMeters.Values)
