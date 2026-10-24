@@ -31,7 +31,7 @@ static class Verification
 
     private static int Usage()
     {
-        Console.WriteLine("Usage: TestConsole [--selftest | --live | --noise | --diagnose <device-id-part>]");
+        Console.WriteLine("Usage: TestConsole [--containers [--inputs] | --selftest | --live | --noise | --diagnose <device-id-part>]");
         return 2;
     }
 

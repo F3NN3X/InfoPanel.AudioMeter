@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Features removed in future versions
 
+## [1.5.0] - 2026-10-24
+
+### Added
+- **Input devices**: recording devices get a container each, with the same entries as the output devices (levels, peak/RMS/peak hold, `spectrum`), and a new `default-input` container follows the default recording device.
+- **`data-flow` entry** in every container: `output` for playback devices (and `default-audio`), `input` for recording devices (and `default-input`).
+- **`[Devices] IncludeInputs`** in the ini, `false` by default. A recording device's meter only reads while a capture stream is open on it, so metering inputs opens one stream per input and Windows shows the microphone-in-use indicator while the plugin runs; inputs are therefore opt-in.
+
 ## [1.4.0] - 2026-10-14
 
 ### Changed

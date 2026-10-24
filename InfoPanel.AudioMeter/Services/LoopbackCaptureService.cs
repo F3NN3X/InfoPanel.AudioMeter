@@ -10,7 +10,8 @@ namespace AudioLevelMeterPlugin.Services
 {
     /// <summary>
     /// Captures what each render device is playing (WASAPI loopback) on one background thread
-    /// and publishes the spectrum of each device as a comma-separated string.
+    /// and publishes the spectrum of each device as a comma-separated string. Input devices are
+    /// captured the normal shared-mode way; that stream is also what makes their meter read levels.
     /// </summary>
     public class LoopbackCaptureService : IDisposable
     {
@@ -41,13 +42,13 @@ namespace AudioLevelMeterPlugin.Services
         }
 
         /// <summary>
-        /// Register a container to capture. A null deviceId follows the default render endpoint.
-        /// Call before Start.
+        /// Register a container to capture. A null deviceId follows the default endpoint of its flow
+        /// (render, or capture for an input). Call before Start.
         /// </summary>
-        public void AddTarget(string containerId, string? deviceId)
+        public void AddTarget(string containerId, string? deviceId, bool isInput = false)
         {
             if (_thread != null || _targetsById.ContainsKey(containerId)) return;
-            var target = new CaptureTarget(containerId, deviceId);
+            var target = new CaptureTarget(containerId, deviceId, isInput);
             _targets.Add(target);
             _targetsById[containerId] = target;
         }
@@ -160,6 +161,7 @@ namespace AudioLevelMeterPlugin.Services
         {
             private readonly string _containerId;
             private readonly string? _deviceId;
+            private readonly bool _isInput;
 
             private IAudioClient? _client;
             private IAudioCaptureClient? _capture;
@@ -186,10 +188,11 @@ namespace AudioLevelMeterPlugin.Services
 
             public volatile string Latest = string.Empty;
 
-            public CaptureTarget(string containerId, string? deviceId)
+            public CaptureTarget(string containerId, string? deviceId, bool isInput)
             {
                 _containerId = containerId;
                 _deviceId = deviceId;
+                _isInput = isInput;
                 _bandBuffer = new float[64];
             }
 
@@ -204,7 +207,7 @@ namespace AudioLevelMeterPlugin.Services
                 if (_deviceId == null && now - _lastDefaultCheck >= DefaultCheckIntervalMs)
                 {
                     _lastDefaultCheck = now;
-                    if (ResolveDefaultId(enumerator) != _activeDeviceId)
+                    if (ResolveDefaultId(enumerator, _isInput) != _activeDeviceId)
                     {
                         // Default endpoint changed: re-resolve on the next poll
                         Teardown();
@@ -289,8 +292,8 @@ namespace AudioLevelMeterPlugin.Services
                 {
                     if (_deviceId == null)
                     {
-                        int hrDefault = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console, out device);
-                        if (hrDefault != CoreAudioConstants.S_OK) { Fail(now, $"no default render device 0x{hrDefault:X8}"); return false; }
+                        int hrDefault = enumerator.GetDefaultAudioEndpoint(_isInput ? DataFlow.Capture : DataFlow.Render, Role.Console, out device);
+                        if (hrDefault != CoreAudioConstants.S_OK) { Fail(now, $"no default {(_isInput ? "input" : "render")} device 0x{hrDefault:X8}"); return false; }
                     }
                     else
                     {
@@ -308,7 +311,8 @@ namespace AudioLevelMeterPlugin.Services
                     if (hr != CoreAudioConstants.S_OK) { Fail(now, $"GetMixFormat 0x{hr:X8}"); return false; }
                     ReadFormat(pFormat, out int sampleRate);
 
-                    hr = _client.Initialize(CoreAudioConstants.AUDCLNT_SHAREMODE_SHARED, CoreAudioConstants.AUDCLNT_STREAMFLAGS_LOOPBACK,
+                    uint streamFlags = _isInput ? 0 : CoreAudioConstants.AUDCLNT_STREAMFLAGS_LOOPBACK;
+                    hr = _client.Initialize(CoreAudioConstants.AUDCLNT_SHAREMODE_SHARED, streamFlags,
                         200 * 10000, 0, pFormat, IntPtr.Zero);
                     if (hr != CoreAudioConstants.S_OK) { Fail(now, $"Initialize 0x{hr:X8}"); return false; }
 
@@ -320,14 +324,18 @@ namespace AudioLevelMeterPlugin.Services
                     hr = _client.Start();
                     if (hr != CoreAudioConstants.S_OK) { Fail(now, $"Start 0x{hr:X8}"); return false; }
 
-                    // Without the endpoint volume the bands are left uncompensated rather than failing
-                    var iidVolume = CoreAudioConstants.IID_IAudioEndpointVolume;
-                    int hrVolume = device.Activate(ref iidVolume, CoreAudioConstants.CLSCTX_ALL, IntPtr.Zero, out IntPtr pVolume);
-                    if (hrVolume == CoreAudioConstants.S_OK && pVolume != IntPtr.Zero)
+                    // Without the endpoint volume the bands are left uncompensated rather than failing.
+                    // An input stream already has its gain applied, so only render endpoints need it.
+                    if (!_isInput)
                     {
-                        _volume = WrapAndRelease<IAudioEndpointVolume>(pVolume, hrVolume);
-                        _hardwareVolume = _volume.QueryHardwareSupport(out uint mask) == CoreAudioConstants.S_OK
-                            && (mask & CoreAudioConstants.ENDPOINT_HARDWARE_SUPPORT_VOLUME) != 0;
+                        var iidVolume = CoreAudioConstants.IID_IAudioEndpointVolume;
+                        int hrVolume = device.Activate(ref iidVolume, CoreAudioConstants.CLSCTX_ALL, IntPtr.Zero, out IntPtr pVolume);
+                        if (hrVolume == CoreAudioConstants.S_OK && pVolume != IntPtr.Zero)
+                        {
+                            _volume = WrapAndRelease<IAudioEndpointVolume>(pVolume, hrVolume);
+                            _hardwareVolume = _volume.QueryHardwareSupport(out uint mask) == CoreAudioConstants.S_OK
+                                && (mask & CoreAudioConstants.ENDPOINT_HARDWARE_SUPPORT_VOLUME) != 0;
+                        }
                     }
                     ReadVolume();
                     _lastVolumeCheck = now;
@@ -367,12 +375,12 @@ namespace AudioLevelMeterPlugin.Services
                 _gain = CompensationGain(levelDb, scalar, muted, _hardwareVolume);
             }
 
-            private static string? ResolveDefaultId(IMMDeviceEnumerator enumerator)
+            private static string? ResolveDefaultId(IMMDeviceEnumerator enumerator, bool isInput)
             {
                 IMMDevice? device = null;
                 try
                 {
-                    if (enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console, out device) != CoreAudioConstants.S_OK) return null;
+                    if (enumerator.GetDefaultAudioEndpoint(isInput ? DataFlow.Capture : DataFlow.Render, Role.Console, out device) != CoreAudioConstants.S_OK) return null;
                     return GetId(device);
                 }
                 finally

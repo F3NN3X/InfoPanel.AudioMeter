@@ -12,4 +12,10 @@
     <ProjectReference Include="..\InfoPanel.AudioMeter\InfoPanel.AudioMeter.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="InfoPanel.Plugins">
+      <HintPath>..\Libs\InfoPanel.Plugins.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>

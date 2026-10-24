@@ -35,6 +35,11 @@ namespace AudioLevelMeterPlugin.Models
         public string CustomName { get; set; } = string.Empty;
         public string ContainerId { get; set; } = string.Empty;
         public bool IsDefault { get; set; }
+
+        /// <summary>
+        /// True for a capture endpoint (microphone, line in), false for a render endpoint
+        /// </summary>
+        public bool IsInput { get; set; }
         
         /// <summary>
         /// Gets the display name (custom name if available, otherwise friendly name)
@@ -64,6 +69,11 @@ namespace AudioLevelMeterPlugin.Models
         public float AudioCeilingDb { get; set; } = -20f;
 
         /// <summary>
+        /// Device selection (the [Devices] section of the ini)
+        /// </summary>
+        public DeviceSettings Devices { get; } = new DeviceSettings();
+
+        /// <summary>
         /// Spectrum band settings (the [Spectrum] section of the ini)
         /// </summary>
         public SpectrumSettings Spectrum { get; } = new SpectrumSettings();
@@ -72,6 +82,17 @@ namespace AudioLevelMeterPlugin.Models
         /// How levels map to percent (the [Meter] section of the ini)
         /// </summary>
         public MeterSettings Meter { get; } = new MeterSettings();
+    }
+
+    /// <summary>
+    /// Device selection settings (the [Devices] section of the ini)
+    /// </summary>
+    public class DeviceSettings
+    {
+        /// <summary>
+        /// Meter input devices too. See the README for why this is off by default.
+        /// </summary>
+        public bool IncludeInputs { get; set; } = false;
     }
 
     /// <summary>

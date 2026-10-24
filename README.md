@@ -55,7 +55,31 @@ Once installed, the Audio Meter plugin will appear in InfoPanel's sensor list wi
   - Device name and audio level (0-100% with responsive scaling)
 - **Audio Meter - [Device Name]** - Individual containers for each available audio device
   - Device friendly name, device name, and real-time audio level with VU meter behavior
+- **Default Input Meter** (`default-input`) - Tracks the Windows default input device (only when `IncludeInputs` is on, see below)
 - **Update Rate**: 20 FPS (50ms intervals) for smooth metering
+
+### Sensors
+
+Every container (`default-audio`, `default-input` and each `audio-meter-<id>`) has the same entries:
+
+| Entry | Type | Value |
+| --- | --- | --- |
+| `data-flow` | text | `output` for a playback device, `input` for a recording device (`default-audio` is `output`, `default-input` is `input`) |
+| `device-name` | text | The device's display name |
+| `audio-level`, `left-channel`, `right-channel` | sensor, % | Level on the [meter scale](#meter-scale) |
+| `peak-level`, `rms-level`, `peak-hold` | sensor, dB | Peak, short RMS average and peak hold |
+| `spectrum` | text | Frequency bands, see [Spectrum](#spectrum) |
+
+### Input devices
+
+Input devices (microphones, line in) are metered too, but they are off by default. Windows' level meter for a recording device only reads while some application has a capture stream open on it. Measured on a dev machine with nothing else capturing: the meter of every recording device read 0 with no stream, and a Focusrite interface went from 0 to a live level once a stream was opened. So metering an input means the plugin opens a normal shared-mode capture stream on each input, and Windows shows the microphone-in-use indicator for as long as the plugin runs. That is why inputs are opt-in:
+
+```ini
+[Devices]
+IncludeInputs = false
+```
+
+Set `IncludeInputs = true` and restart InfoPanel to get a container per recording device plus `default-input`. Inputs need `[Spectrum] Enabled = true`, because the capture stream that feeds their meter is the spectrum capture; their `spectrum` is computed from that stream, not from loopback. Output devices are unaffected.
 
 ### Meter Scale
 
