@@ -79,7 +79,7 @@ Input devices (microphones, line in) are metered too, but they are off by defaul
 IncludeInputs = false
 ```
 
-Set `IncludeInputs = true` and restart InfoPanel to get a container per recording device plus `default-input`. Inputs need `[Spectrum] Enabled = true`, because the capture stream that feeds their meter is the spectrum capture; their `spectrum` is computed from that stream, not from loopback. Output devices are unaffected.
+Set `IncludeInputs = true` and restart InfoPanel to get a container per recording device plus `default-input`. Each input runs a shared-mode capture stream, because Windows only meters a recording device while one is open; Windows shows the microphone-in-use indicator while it runs. With `[Spectrum] Enabled = true` their `spectrum` is computed from that stream, not from loopback. Output devices are unaffected.
 
 ### Meter Scale
 

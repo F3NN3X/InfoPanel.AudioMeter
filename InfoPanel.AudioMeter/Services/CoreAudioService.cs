@@ -26,7 +26,7 @@ namespace AudioLevelMeterPlugin.Services
 
         // Default endpoint state: resolved once, re-checked about once a second
         private readonly DefaultEndpoint _defaultOutput = new(DataFlow.Render, Role.Multimedia, "default-audio");
-        private readonly DefaultEndpoint _defaultInput = new(DataFlow.Capture, Role.Console, "default-input");
+        private readonly DefaultEndpoint _defaultInput = new(DataFlow.Capture, Role.Multimedia, "default-input");
 
         // Last peak-read failure that was logged (0 = none), so a failing meter logs once instead of every tick
         private int _lastPeakErrorHr;

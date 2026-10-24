@@ -219,18 +219,16 @@ namespace AudioLevelMeterPlugin
         {
             try
             {
-                if (!_configuration.Spectrum.Enabled)
-                {
-                    if (_configuration.Devices.IncludeInputs) Console.WriteLine("Input meters need [Spectrum] Enabled=true: the capture stream that feeds them is the spectrum capture");
-                    return;
-                }
+                // With the spectrum off, inputs still need their capture stream to meter at all; outputs need none.
+                bool spectrum = _configuration.Spectrum.Enabled;
+                if (!spectrum && !_configuration.Devices.IncludeInputs) return;
 
                 _loopbackService = new LoopbackCaptureService(_configuration.Spectrum);
-                _loopbackService.AddTarget("default-audio", null);
+                if (spectrum) _loopbackService.AddTarget("default-audio", null);
                 if (_configuration.Devices.IncludeInputs) _loopbackService.AddTarget("default-input", null, isInput: true);
                 foreach (var device in _audioDevices)
                 {
-                    _loopbackService.AddTarget(device.ContainerId, device.DeviceId, device.IsInput);
+                    if (spectrum || device.IsInput) _loopbackService.AddTarget(device.ContainerId, device.DeviceId, device.IsInput);
                 }
                 _loopbackService.Start();
             }
@@ -245,7 +243,8 @@ namespace AudioLevelMeterPlugin
         /// </summary>
         private void UpdateSpectra()
         {
-            if (_containerService == null) return;
+            // Off: the input streams run for their meters only.
+            if (_containerService == null || !_configuration.Spectrum.Enabled) return;
 
             foreach (var container in _containerService.GetAllContainers())
             {

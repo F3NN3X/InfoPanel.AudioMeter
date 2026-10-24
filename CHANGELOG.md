@@ -24,7 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Input devices**: recording devices get a container each, with the same entries as the output devices (levels, peak/RMS/peak hold, `spectrum`), and a new `default-input` container follows the default recording device.
 - **`data-flow` entry** in every container: `output` for playback devices (and `default-audio`), `input` for recording devices (and `default-input`).
-- **`[Devices] IncludeInputs`** in the ini, `false` by default. A recording device's meter only reads while a capture stream is open on it, so metering inputs opens one stream per input and Windows shows the microphone-in-use indicator while the plugin runs; inputs are therefore opt-in.
+- **`[Devices] IncludeInputs`** in the ini, `false` by default. A recording device's meter only reads while a capture stream is open on it, so metering inputs opens one stream per input and Windows shows the microphone-in-use indicator while the plugin runs; inputs are therefore opt-in. They meter with `[Spectrum] Enabled = false` too (then without a spectrum).
+
+### Changed
+- **The default device follows the Multimedia role everywhere.** `default-audio`'s spectrum looked up the Console default while its meter used Multimedia, so the two could show different devices; both, and `default-input`, now use Multimedia.
 
 ## [1.4.0] - 2026-10-14
 

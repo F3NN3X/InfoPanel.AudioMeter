@@ -55,7 +55,8 @@ namespace AudioLevelMeterPlugin.Services
 
         public void Start()
         {
-            if (!_settings.Enabled || _thread != null || _targets.Count == 0) return;
+            // The plugin adds only the targets it needs (with the spectrum off, just the inputs' meter streams).
+            if (_thread != null || _targets.Count == 0) return;
             _thread = new Thread(PollLoop) { IsBackground = true, Name = "AudioMeter.Loopback" };
             _thread.Start();
         }
@@ -292,7 +293,7 @@ namespace AudioLevelMeterPlugin.Services
                 {
                     if (_deviceId == null)
                     {
-                        int hrDefault = enumerator.GetDefaultAudioEndpoint(_isInput ? DataFlow.Capture : DataFlow.Render, Role.Console, out device);
+                        int hrDefault = enumerator.GetDefaultAudioEndpoint(_isInput ? DataFlow.Capture : DataFlow.Render, Role.Multimedia, out device);
                         if (hrDefault != CoreAudioConstants.S_OK) { Fail(now, $"no default {(_isInput ? "input" : "render")} device 0x{hrDefault:X8}"); return false; }
                     }
                     else
@@ -380,7 +381,7 @@ namespace AudioLevelMeterPlugin.Services
                 IMMDevice? device = null;
                 try
                 {
-                    if (enumerator.GetDefaultAudioEndpoint(isInput ? DataFlow.Capture : DataFlow.Render, Role.Console, out device) != CoreAudioConstants.S_OK) return null;
+                    if (enumerator.GetDefaultAudioEndpoint(isInput ? DataFlow.Capture : DataFlow.Render, Role.Multimedia, out device) != CoreAudioConstants.S_OK) return null;
                     return GetId(device);
                 }
                 finally
